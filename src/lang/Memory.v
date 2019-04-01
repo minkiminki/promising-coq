@@ -144,7 +144,7 @@ Module Memory.
   Definition init: t := fun _ => Cell.init.
 
   Definition closed_timemap (times:TimeMap.t) (mem:t): Prop :=
-    forall loc, exists from val released, get loc (times loc) mem = Some (from, Message.mk val released).
+    forall loc, exists from msg, get loc (times loc) mem = Some (from, msg).
 
   Inductive closed_view (view:View.t) (mem:t): Prop :=
   | closed_view_intro
@@ -336,7 +336,7 @@ Module Memory.
     - subst. erewrite Cell.add_o; eauto.
       repeat (condtac; subst; des; ss; try congr).
     - repeat (condtac; subst; des; ss; try congr).
-  Qed.      
+  Qed.
 
   Lemma split_o
         mem2 mem1 loc ts1 ts2 ts3 val2 val3 released2 released3
@@ -353,7 +353,7 @@ Module Memory.
     - subst. erewrite Cell.split_o; eauto.
       repeat (condtac; subst; des; ss; try congr).
     - repeat (condtac; subst; des; ss; try congr).
-  Qed.      
+  Qed.
 
   Lemma lower_o
         mem2 mem1 loc from to val released1 released2
@@ -1255,7 +1255,7 @@ Module Memory.
   Lemma max_ts_spec
         loc ts from msg mem
         (GET: get loc ts mem = Some (from, msg)):
-    <<GET: exists from val released, get loc (max_ts loc mem) mem = Some (from, Message.mk val released)>> /\
+    <<GET: exists from msg, get loc (max_ts loc mem) mem = Some (from, msg)>> /\
     <<MAX: Time.le ts (max_ts loc mem)>>.
   Proof. eapply Cell.max_ts_spec; eauto. Qed.
 
