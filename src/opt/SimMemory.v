@@ -33,11 +33,11 @@ Inductive covered (loc:Loc.t) (ts:Time.t) (mem:Memory.t): Prop :=
 Inductive sim_memory (mem_src mem_tgt:Memory.t): Prop :=
 | sim_memory_intro
     (COVER: forall loc ts, covered loc ts mem_src <-> covered loc ts mem_tgt)
-    (MSG: forall loc from_tgt to val released_tgt
-            (GET: Memory.get loc to mem_tgt = Some (from_tgt, Message.mk val released_tgt)),
-        exists from_src released_src,
-          <<GET: Memory.get loc to mem_src = Some (from_src, Message.mk val released_src)>> /\
-          <<RELEASED: View.opt_le released_src released_tgt>>)
+    (MSG: forall loc from_tgt to msg_tgt
+            (GET: Memory.get loc to mem_tgt = Some (from_tgt, msg_tgt)),
+        exists from_src msg_src,
+          <<GET: Memory.get loc to mem_src = Some (from_src, msg_src)>> /\
+          <<RELEASED: Message.le msg_src msg_tgt>>)
 .
 
 Program Instance sim_memory_PreOrder: PreOrder sim_memory.
@@ -53,12 +53,12 @@ Qed.
 
 
 Lemma sim_memory_get
-      loc from_tgt to val released_tgt mem_src mem_tgt
+      loc from_tgt to msg_tgt mem_src mem_tgt
       (SIM: sim_memory mem_src mem_tgt)
-      (GET: Memory.get loc to mem_tgt = Some (from_tgt, Message.mk val released_tgt)):
-  exists from_src released_src,
-    <<GET: Memory.get loc to mem_src = Some (from_src, Message.mk val released_src)>> /\
-    <<RELEASED: View.opt_le released_src released_tgt>>.
+      (GET: Memory.get loc to mem_tgt = Some (from_tgt, msg_tgt)):
+  exists from_src msg_src,
+    <<GET: Memory.get loc to mem_src = Some (from_src, msg_src)>> /\
+    <<RELEASED: Message.le msg_src msg_tgt>>.
 Proof.
   eapply SIM. eauto.
 Qed.
@@ -81,8 +81,7 @@ Proof.
     destruct (mem_src loc).(Cell.WF). exploit VOLUME; eauto. i. des; auto.
     inv x. rewrite H1 in *. inv l.
   }
-  i. inv x. inv ITV. destruct msg. ss.
-  esplits; eauto.
+  i. inv x. inv ITV. destruct msg; ss; esplits; eauto.
 Qed.
 
 Lemma sim_memory_max_view
@@ -141,9 +140,9 @@ Proof.
 Qed.
 
 Lemma add_covered
-      mem2 mem1 loc from to val released
+      mem2 mem1 loc from to msg
       l t
-      (ADD: Memory.add mem1 loc from to val released mem2):
+      (ADD: Memory.add mem1 loc from to msg mem2):
   covered l t mem2 <->
   covered l t mem1 \/ (l = loc /\ Interval.mem (from, to) t).
 Proof.
@@ -160,9 +159,9 @@ Proof.
 Qed.
 
 Lemma split_covered
-      mem2 mem1 loc ts1 ts2 ts3 val2 val3 released2 released3
+      mem2 mem1 loc ts1 ts2 ts3 msg2 msg3
       l t
-      (SPLIT: Memory.split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2):
+      (SPLIT: Memory.split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2):
   covered l t mem2 <-> covered l t mem1.
 Proof.
   econs; i.
@@ -202,9 +201,9 @@ Proof.
 Qed.
 
 Lemma lower_covered
-      mem2 mem1 loc from to val released1 released2
+      mem2 mem1 loc from to msg1 msg2
       l t
-      (LOWER: Memory.lower mem1 loc from to val released1 released2 mem2):
+      (LOWER: Memory.lower mem1 loc from to msg1 msg2 mem2):
   covered l t mem2 <-> covered l t mem1.
 Proof.
   econs; i.
@@ -225,12 +224,12 @@ Proof.
 Qed.
 
 Lemma sim_memory_add
-      mem1_src mem1_tgt released_src
-      mem2_src mem2_tgt released_tgt
-      loc from to val
-      (REL_LE: View.opt_le released_src released_tgt)
-      (SRC: Memory.add mem1_src loc from to val released_src mem2_src)
-      (TGT: Memory.add mem1_tgt loc from to val released_tgt mem2_tgt)
+      mem1_src mem1_tgt msg_src
+      mem2_src mem2_tgt msg_tgt
+      loc from to
+      (REL_LE: Message.le msg_src msg_tgt)
+      (SRC: Memory.add mem1_src loc from to msg_src mem2_src)
+      (TGT: Memory.add mem1_tgt loc from to msg_tgt mem2_tgt)
       (SIM: sim_memory mem1_src mem1_tgt):
   sim_memory mem2_src mem2_tgt.
 Proof.
@@ -248,10 +247,10 @@ Qed.
 Lemma sim_memory_split
       mem1_src mem1_tgt
       mem2_src mem2_tgt
-      loc ts1 ts2 ts3 val2 val3 released2_src released3_src released2_tgt released3_tgt
-      (REL_LE: View.opt_le released2_src released2_tgt)
-      (SRC: Memory.split mem1_src loc ts1 ts2 ts3 val2 val3 released2_src released3_src mem2_src)
-      (TGT: Memory.split mem1_tgt loc ts1 ts2 ts3 val2 val3 released2_tgt released3_tgt mem2_tgt)
+      loc ts1 ts2 ts3 msg2_src msg3_src msg2_tgt msg3_tgt
+      (REL_LE: Message.le msg2_src msg2_tgt)
+      (SRC: Memory.split mem1_src loc ts1 ts2 ts3 msg2_src msg3_src mem2_src)
+      (TGT: Memory.split mem1_tgt loc ts1 ts2 ts3 msg2_tgt msg3_tgt mem2_tgt)
       (SIM: sim_memory mem1_src mem1_tgt):
   sim_memory mem2_src mem2_tgt.
 Proof.
@@ -273,10 +272,10 @@ Qed.
 Lemma sim_memory_lower
       mem1_src mem1_tgt
       mem2_src mem2_tgt
-      loc from to val released1_src released1_tgt released2_src released2_tgt
-      (REL_LE: View.opt_le released2_src released2_tgt)
-      (SRC: Memory.lower mem1_src loc from to val released1_src released2_src mem2_src)
-      (TGT: Memory.lower mem1_tgt loc from to val released1_tgt released2_tgt mem2_tgt)
+      loc from to msg1_src msg2_src msg1_tgt msg2_tgt
+      (REL_LE: Message.le msg2_src msg2_tgt)
+      (SRC: Memory.lower mem1_src loc from to msg1_src msg2_src mem2_src)
+      (TGT: Memory.lower mem1_tgt loc from to msg1_tgt msg2_tgt mem2_tgt)
       (SIM: sim_memory mem1_src mem1_tgt):
   sim_memory mem2_src mem2_tgt.
 Proof.
@@ -290,12 +289,12 @@ Proof.
 Qed.
 
 Lemma sim_memory_promise
-      loc from to val kind
-      promises1_src mem1_src released_src promises2_src mem2_src
-      promises1_tgt mem1_tgt released_tgt promises2_tgt mem2_tgt
-      (REL_LE: View.opt_le released_src released_tgt)
-      (PROMISE_SRC: Memory.promise promises1_src mem1_src loc from to val released_src promises2_src mem2_src kind)
-      (PROMISE_TGT: Memory.promise promises1_tgt mem1_tgt loc from to val released_tgt promises2_tgt mem2_tgt kind)
+      loc from to kind
+      promises1_src mem1_src msg_src promises2_src mem2_src
+      promises1_tgt mem1_tgt msg_tgt promises2_tgt mem2_tgt
+      (REL_LE: Message.le msg_src msg_tgt)
+      (PROMISE_SRC: Memory.promise promises1_src mem1_src loc from to msg_src promises2_src mem2_src kind)
+      (PROMISE_TGT: Memory.promise promises1_tgt mem1_tgt loc from to msg_tgt promises2_tgt mem2_tgt kind)
       (SIM: sim_memory mem1_src mem1_tgt):
   sim_memory mem2_src mem2_tgt.
 Proof.
@@ -339,8 +338,8 @@ Proof.
 Qed.
 
 Lemma lower_sim_memory
-      mem1 loc from to val released1 released2 mem2
-      (LOWER: Memory.lower mem1 loc from to val released1 released2 mem2):
+      mem1 loc from to msg1 msg2 mem2
+      (LOWER: Memory.lower mem1 loc from to msg1 msg2 mem2):
   sim_memory mem2 mem1.
 Proof.
   econs.
@@ -353,16 +352,16 @@ Proof.
 Qed.
 
 Lemma promise_lower_sim_memory
-      promises1 mem1 loc from to val released1 released2 promises2 mem2
-      (PROMISE: Memory.promise promises1 mem1 loc from to val released2 promises2 mem2 (Memory.op_kind_lower released1)):
+      promises1 mem1 loc from to msg1 msg2 promises2 mem2
+      (PROMISE: Memory.promise promises1 mem1 loc from to msg2 promises2 mem2 (Memory.op_kind_lower msg1)):
   sim_memory mem2 mem1.
 Proof.
   inv PROMISE. eapply lower_sim_memory. eauto.
 Qed.
 
 Lemma split_sim_memory
-      mem0 loc ts1 ts2 ts3 val2 val3 released2 released3 mem1
-      (SPLIT: Memory.split mem0 loc ts1 ts2 ts3 val2 val3 released2 released3 mem1):
+      mem0 loc ts1 ts2 ts3 msg2 msg3 mem1
+      (SPLIT: Memory.split mem0 loc ts1 ts2 ts3 msg2 msg3 mem1):
   sim_memory mem1 mem0.
 Proof.
   econs.

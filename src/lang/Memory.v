@@ -105,6 +105,12 @@ Module Memory.
   (*   econs. ii. symmetry. apply H. *)
   (* Qed. *)
 
+  Definition no_half (promises mem: t) :=
+    forall
+      loc to from mem
+      (GETMEM: Memory.get loc to mem = Some (from, Message.half)),
+      Memory.get loc to promises = Some (from, Message.half).
+
   Definition bot: t := fun _ => Cell.bot.
 
   Lemma bot_get loc ts: get loc ts bot = None.
@@ -119,18 +125,18 @@ Module Memory.
   Qed.
 
   Definition singleton
-             (loc:Loc.t) (from to:Time.t) (val:Const.t) (released:option View.t)
+             (loc:Loc.t) (from to:Time.t) (msg:Message.t)
              (LT: Time.lt from to): t :=
-    (LocFun.add loc (Cell.singleton val released LT)
+    (LocFun.add loc (Cell.singleton msg LT)
                 (fun _ => Cell.bot)).
 
   Lemma singleton_get
-        loc from to val released (LT:Time.lt from to)
+        loc from to msg (LT:Time.lt from to)
         l t:
-    get l t (singleton loc val released LT) =
+    get l t (singleton loc msg LT) =
     if Loc.eq_dec l loc
     then if Time.eq_dec t to
-         then Some (from, Message.mk val released)
+         then Some (from, msg)
          else None
     else None.
   Proof.
@@ -167,10 +173,10 @@ Module Memory.
 
   Inductive closed (mem:t): Prop :=
   | closed_intro
-      (CLOSED: forall loc from to val released (MSG: get loc to mem = Some (from, Message.mk val released)),
-          <<WF: View.opt_wf released>> /\
-          <<TS: Time.le (released.(View.unwrap).(View.rlx) loc) to>> /\
-          <<CLOSED: closed_opt_view released mem>>)
+      (CLOSED: forall loc from to msg (MSG: get loc to mem = Some (from, msg)),
+          <<WF: View.opt_wf msg.(Message.view)>> /\
+          <<TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to>> /\
+          <<CLOSED: closed_opt_view msg.(Message.view) mem>>)
       (INHABITED: inhabited mem)
   .
 
@@ -206,38 +212,38 @@ Module Memory.
     - unfold init. econs.
   Qed.
 
-  Inductive add (mem1:t) (loc:Loc.t) (from to:Time.t) (val:Const.t) (released:option View.t): forall (mem2:t), Prop :=
+  Inductive add (mem1:t) (loc:Loc.t) (from to:Time.t) (msg:Message.t): forall (mem2:t), Prop :=
   | add_intro
       r
-      (ADD: Cell.add (mem1 loc) from to val released r):
-      add mem1 loc from to val released (LocFun.add loc r mem1)
+      (ADD: Cell.add (mem1 loc) from to msg r):
+      add mem1 loc from to msg (LocFun.add loc r mem1)
   .
 
-  Inductive split (mem1:t) (loc:Loc.t) (ts1 ts2 ts3:Time.t) (val2 val3:Const.t) (released2 released3:option View.t): forall (mem2:t), Prop :=
+  Inductive split (mem1:t) (loc:Loc.t) (ts1 ts2 ts3:Time.t) (msg2 msg3:Message.t): forall (mem2:t), Prop :=
   | split_intro
       r
-      (SPLIT: Cell.split (mem1 loc) ts1 ts2 ts3 val2 val3 released2 released3 r):
-      split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 (LocFun.add loc r mem1)
+      (SPLIT: Cell.split (mem1 loc) ts1 ts2 ts3 msg2 msg3 r):
+      split mem1 loc ts1 ts2 ts3 msg2 msg3 (LocFun.add loc r mem1)
   .
 
-  Inductive lower (mem1:t) (loc:Loc.t) (from to:Time.t) (val:Const.t) (released1 released2:option View.t): forall (mem2:t), Prop :=
+  Inductive lower (mem1:t) (loc:Loc.t) (from to:Time.t) (msg1 msg2:Message.t): forall (mem2:t), Prop :=
   | lower_intro
       r
-      (LOWER: Cell.lower (mem1 loc) from to val released1 released2 r):
-      lower mem1 loc from to val released1 released2 (LocFun.add loc r mem1)
+      (LOWER: Cell.lower (mem1 loc) from to msg1 msg2 r):
+      lower mem1 loc from to msg1 msg2 (LocFun.add loc r mem1)
   .
 
-  Inductive remove (mem1:t) (loc:Loc.t) (from1 to1:Time.t) (val1:Const.t) (released1:option View.t): forall (mem2:t), Prop :=
+  Inductive remove (mem1:t) (loc:Loc.t) (from1 to1:Time.t) (msg1:Message.t): forall (mem2:t), Prop :=
   | remove_intro
       r
-      (REMOVE: Cell.remove (mem1 loc) from1 to1 val1 released1 r):
-      remove mem1 loc from1 to1 val1 released1 (LocFun.add loc r mem1)
+      (REMOVE: Cell.remove (mem1 loc) from1 to1 msg1 r):
+      remove mem1 loc from1 to1 msg1 (LocFun.add loc r mem1)
   .
 
   Inductive op_kind :=
   | op_kind_add
-  | op_kind_split (ts3:Time.t) (val3:Const.t) (released3:option View.t)
-  | op_kind_lower (released1:option View.t)
+  | op_kind_split (ts3:Time.t) (msg3:Message.t)
+  | op_kind_lower (msg1:Message.t)
   .
 
   Inductive op_kind_match: forall (k1 k2:op_kind), Prop :=
@@ -246,43 +252,43 @@ Module Memory.
         op_kind_add
         op_kind_add
   | op_kind_match_split
-      to v1 v2 r1 r2:
+      to m1 m2:
       op_kind_match
-        (op_kind_split to v1 r1)
-        (op_kind_split to v2 r2)
+        (op_kind_split to m1)
+        (op_kind_split to m2)
   | op_kind_match_lower
-      r1 r2:
+      m1 m2:
       op_kind_match
-        (op_kind_lower r1)
-        (op_kind_lower r2)
+        (op_kind_lower m1)
+        (op_kind_lower m2)
   .
 
   Definition op_kind_is_lower (kind:op_kind): bool :=
     match kind with
-    | op_kind_lower rel => true
+    | op_kind_lower msg => true
     | _ => false
     end.
 
-  Inductive op mem1 loc from to val rel mem2: forall (kind:op_kind), Prop :=
+  Inductive op mem1 loc from to msg mem2: forall (kind:op_kind), Prop :=
   | op_add
-      (ADD: add mem1 loc from to val rel mem2):
-      op mem1 loc from to val rel mem2 op_kind_add
+      (ADD: add mem1 loc from to msg mem2):
+      op mem1 loc from to msg mem2 op_kind_add
   | op_split
-      to3 val3 rel3
-      (SPLIT: split mem1 loc from to to3 val val3 rel rel3 mem2):
-      op mem1 loc from to val rel mem2 (op_kind_split to3 val3 rel3)
+      to3 msg3
+      (SPLIT: split mem1 loc from to to3 msg msg3 mem2):
+      op mem1 loc from to msg mem2 (op_kind_split to3 msg3)
   | op_lower
-      rel0
-      (LOWER: lower mem1 loc from to val rel0 rel mem2):
-      op mem1 loc from to val rel mem2 (op_kind_lower rel0)
+      msg0
+      (LOWER: lower mem1 loc from to msg0 msg mem2):
+      op mem1 loc from to msg mem2 (op_kind_lower msg0)
   .
 
   Inductive future_imm (mem1 mem2:t): Prop :=
   | future_imm_intro
-      loc from to val released kind
-      (OP: op mem1 loc from to val released mem2 kind)
-      (CLOSED: closed_opt_view released mem2)
-      (TS: Time.le (released.(View.unwrap).(View.rlx) loc) to)
+      loc from to msg kind
+      (OP: op mem1 loc from to msg mem2 kind)
+      (CLOSED: closed_opt_view msg.(Message.view) mem2)
+      (TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to)
   .
 
   Definition future := rtc future_imm.
@@ -290,25 +296,25 @@ Module Memory.
 
   Inductive promise
             (promises1 mem1:t)
-            (loc:Loc.t) (from to:Time.t) (val:Const.t) (released:option View.t)
+            (loc:Loc.t) (from to:Time.t) (msg:Message.t)
             (promises2 mem2:t): forall (kind:op_kind), Prop :=
   | promise_add
-      (PROMISES: add promises1 loc from to val released promises2)
-      (MEM: add mem1 loc from to val released mem2)
-      (TS: Time.le (released.(View.unwrap).(View.rlx) loc) to):
-      promise promises1 mem1 loc from to val released promises2 mem2 op_kind_add
+      (PROMISES: add promises1 loc from to msg promises2)
+      (MEM: add mem1 loc from to msg mem2)
+      (TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to):
+      promise promises1 mem1 loc from to msg promises2 mem2 op_kind_add
   | promise_split
-      ts3 val3 released3
-      (PROMISES: split promises1 loc from to ts3 val val3 released released3 promises2)
-      (MEM: split mem1 loc from to ts3 val val3 released released3 mem2)
-      (TS: Time.le (released.(View.unwrap).(View.rlx) loc) to):
-      promise promises1 mem1 loc from to val released promises2 mem2 (op_kind_split ts3 val3 released3)
+      ts3 msg3
+      (PROMISES: split promises1 loc from to ts3 msg msg3 promises2)
+      (MEM: split mem1 loc from to ts3 msg msg3 mem2)
+      (TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to):
+      promise promises1 mem1 loc from to msg promises2 mem2 (op_kind_split ts3 msg3)
   | promise_lower
-      released0
-      (PROMISES: lower promises1 loc from to val released0 released promises2)
-      (MEM: lower mem1 loc from to val released0 released mem2)
-      (TS: Time.le (released.(View.unwrap).(View.rlx) loc) to):
-      promise promises1 mem1 loc from to val released promises2 mem2 (op_kind_lower released0)
+      msg0
+      (PROMISES: lower promises1 loc from to msg0 msg promises2)
+      (MEM: lower mem1 loc from to msg0 msg mem2)
+      (TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to):
+      promise promises1 mem1 loc from to msg promises2 mem2 (op_kind_lower msg0)
   .
 
   Inductive write
@@ -317,19 +323,19 @@ Module Memory.
             (promises3 mem2:t) (kind:op_kind): Prop :=
   | write_intro
       promises2
-      (PROMISE: promise promises1 mem1 loc from1 to1 val1 released1 promises2 mem2 kind)
-      (REMOVE: remove promises2 loc from1 to1 val1 released1 promises3)
+      (PROMISE: promise promises1 mem1 loc from1 to1 (Message.mk val1 released1) promises2 mem2 kind)
+      (REMOVE: remove promises2 loc from1 to1 (Message.mk val1 released1) promises3)
   .
 
   (* Lemmas on add, split, lower & remove *)
 
   Lemma add_o
-        mem2 mem1 loc from to val released
+        mem2 mem1 loc from to msg
         l t
-        (ADD: add mem1 loc from to val released mem2):
+        (ADD: add mem1 loc from to msg mem2):
     get l t mem2 =
     if loc_ts_eq_dec (l, t) (loc, to)
-    then Some (from, Message.mk val released)
+    then Some (from, msg)
     else get l t mem1.
   Proof.
     inv ADD. unfold get, LocFun.add. condtac.
@@ -339,14 +345,14 @@ Module Memory.
   Qed.
 
   Lemma split_o
-        mem2 mem1 loc ts1 ts2 ts3 val2 val3 released2 released3
+        mem2 mem1 loc ts1 ts2 ts3 msg2 msg3
         l t
-        (SPLIT: split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2):
+        (SPLIT: split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2):
     get l t mem2 =
     if loc_ts_eq_dec (l, t) (loc, ts2)
-    then Some (ts1, Message.mk val2 released2)
+    then Some (ts1, msg2)
     else if loc_ts_eq_dec (l, t) (loc, ts3)
-         then Some (ts2, Message.mk val3 released3)
+         then Some (ts2, msg3)
          else get l t mem1.
   Proof.
     inv SPLIT. unfold get, LocFun.add. condtac.
@@ -356,12 +362,12 @@ Module Memory.
   Qed.
 
   Lemma lower_o
-        mem2 mem1 loc from to val released1 released2
+        mem2 mem1 loc from to msg1 msg2
         l t
-        (LOWER: lower mem1 loc from to val released1 released2 mem2):
+        (LOWER: lower mem1 loc from to msg1 msg2 mem2):
     get l t mem2 =
     if loc_ts_eq_dec (l, t) (loc, to)
-    then Some (from, Message.mk val released2)
+    then Some (from, msg2)
     else get l t mem1.
   Proof.
     inv LOWER. unfold get, LocFun.add. condtac.
@@ -371,9 +377,9 @@ Module Memory.
   Qed.
 
   Lemma remove_o
-        mem2 mem1 loc from to val released
+        mem2 mem1 loc from to msg
         l t
-        (REMOVE: remove mem1 loc from to val released mem2):
+        (REMOVE: remove mem1 loc from to msg mem2):
     get l t mem2 =
     if loc_ts_eq_dec (l, t) (loc, to)
     then None
@@ -386,56 +392,56 @@ Module Memory.
   Qed.
 
   Lemma add_get0
-        mem1 loc from1 to1 val1 released1 mem2
-        (ADD: add mem1 loc from1 to1 val1 released1 mem2):
+        mem1 loc from1 to1 msg1 mem2
+        (ADD: add mem1 loc from1 to1 msg1 mem2):
     get loc to1 mem1 = None.
   Proof.
     inv ADD. eapply Cell.add_get0; eauto.
   Qed.
 
   Lemma split_get0
-        mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2
-        (SPLIT: split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2):
+        mem1 loc ts1 ts2 ts3 msg2 msg3 mem2
+        (SPLIT: split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2):
     <<GET2: get loc ts2 mem1 = None>> /\
-    <<GET3: get loc ts3 mem1 = Some (ts1, Message.mk val3 released3)>>.
+    <<GET3: get loc ts3 mem1 = Some (ts1, msg3)>>.
   Proof.
     inv SPLIT. eapply Cell.split_get0; eauto.
   Qed.
 
   Lemma lower_get0
-        mem1 loc from to val released1 released2 mem2
-        (LOWER: lower mem1 loc from to val released1 released2 mem2):
-    get loc to mem1 = Some (from, Message.mk val released1).
+        mem1 loc from to msg1 msg2 mem2
+        (LOWER: lower mem1 loc from to msg1 msg2 mem2):
+    get loc to mem1 = Some (from, msg1).
   Proof.
     inv LOWER. eapply Cell.lower_get0; eauto.
   Qed.
 
   Lemma remove_get0
-        mem1 loc from1 to1 val1 released1 mem2
-        (REMOVE: remove mem1 loc from1 to1 val1 released1 mem2):
-    get loc to1 mem1 = Some (from1, Message.mk val1 released1).
+        mem1 loc from1 to1 msg1 mem2
+        (REMOVE: remove mem1 loc from1 to1 msg1 mem2):
+    get loc to1 mem1 = Some (from1, msg1).
   Proof.
     inv REMOVE. eapply Cell.remove_get0; eauto.
   Qed.
 
   Lemma add_get1
-        m1 loc from to val released m2
-        l f t v r
-        (ADD: add m1 loc from to val released m2)
-        (GET1: get l t m1 = Some (f, Message.mk v r)):
-    get l t m2 = Some (f, Message.mk v r).
+        m1 loc from to msg m2
+        l f t m
+        (ADD: add m1 loc from to msg m2)
+        (GET1: get l t m1 = Some (f, m)):
+    get l t m2 = Some (f, m).
   Proof.
     erewrite add_o; eauto. condtac; ss.
     des. subst. erewrite add_get0 in GET1; eauto. congr.
   Qed.
 
   Lemma split_get1
-        m1 loc ts1 ts2 ts3 val2 val3 released2 released3 m2
-        l f t v r
-        (SPLIT: split m1 loc ts1 ts2 ts3 val2 val3 released2 released3 m2)
-        (GET1: get l t m1 = Some (f, Message.mk v r)):
+        m1 loc ts1 ts2 ts3 msg2 msg3 m2
+        l f t m
+        (SPLIT: split m1 loc ts1 ts2 ts3 msg2 msg3 m2)
+        (GET1: get l t m1 = Some (f, m)):
     exists f',
-      <<GET2: get l t m2 = Some (f', Message.mk v r)>> /\
+      <<GET2: get l t m2 = Some (f', m)>> /\
       <<FROM: Time.le f f'>>.
   Proof.
     erewrite split_o; eauto. repeat condtac; ss.
@@ -448,13 +454,13 @@ Module Memory.
   Qed.
 
   Lemma lower_get1
-        m1 loc from to val released1 released2 m2
-        l f t v r
-        (LOWER: lower m1 loc from to val released1 released2 m2)
-        (GET1: get l t m1 = Some (f, Message.mk v r)):
-    exists r',
-      <<GET2: get l t m2 = Some (f, Message.mk v r')>> /\
-      <<RELEASED: View.opt_le r' r>>.
+        m1 loc from to msg1 msg2 m2
+        l f t m
+        (LOWER: lower m1 loc from to msg1 msg2 m2)
+        (GET1: get l t m1 = Some (f, m)):
+    exists m',
+      <<GET2: get l t m2 = Some (f, m')>> /\
+      <<RELEASED: Message.le m' m>>.
   Proof.
     erewrite lower_o; eauto. condtac; ss.
     - des. subst. erewrite lower_get0 in GET1; [|eauto]. inv GET1. esplits; eauto.
@@ -464,8 +470,8 @@ Module Memory.
   Qed.
 
   Lemma add_inhabited
-        mem1 mem2 loc from to val released
-        (ADD: add mem1 loc from to val released mem2)
+        mem1 mem2 loc from to msg
+        (ADD: add mem1 loc from to msg mem2)
         (INHABITED: inhabited mem1):
     <<INHABITED: inhabited mem2>>.
   Proof.
@@ -474,8 +480,8 @@ Module Memory.
   Qed.
 
   Lemma split_inhabited
-        mem1 mem2 loc ts1 ts2 ts3 val2 val3 released2 released3
-        (SPLIT: split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2)
+        mem1 mem2 loc ts1 ts2 ts3 msg2 msg3
+        (SPLIT: split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2)
         (INHABITED: inhabited mem1):
     <<INHABITED: inhabited mem2>>.
   Proof.
@@ -485,8 +491,8 @@ Module Memory.
   Qed.
 
   Lemma lower_inhabited
-        mem1 mem2 loc from to val released1 released2
-        (LOWER: lower mem1 loc from to val released1 released2 mem2)
+        mem1 mem2 loc from to msg1 msg2
+        (LOWER: lower mem1 loc from to msg1 msg2 mem2)
         (INHABITED: inhabited mem1):
     <<INHABITED: inhabited mem2>>.
   Proof.
@@ -497,9 +503,9 @@ Module Memory.
   (* Lemmas on op *)
 
   Lemma promise_op
-        promises1 mem1 loc from to val released promises2 mem2 kind
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind):
-    op mem1 loc from to val released mem2 kind.
+        promises1 mem1 loc from to msg promises2 mem2 kind
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind):
+    op mem1 loc from to msg mem2 kind.
   Proof.
     inv PROMISE.
     - econs 1. ss.
@@ -508,14 +514,14 @@ Module Memory.
   Qed.
 
   Lemma op_get1
-        m1 loc from to val released m2 kind
-        l f t v r
-        (OP: op m1 loc from to val released m2 kind)
-        (GET: get l t m1 = Some (f, Message.mk v r)):
-    exists f' r',
-      <<GET: get l t m2 = Some (f', Message.mk v r')>> /\
+        m1 loc from to msg m2 kind
+        l f t m
+        (OP: op m1 loc from to msg m2 kind)
+        (GET: get l t m1 = Some (f, m)):
+    exists f' m',
+      <<GET: get l t m2 = Some (f', m')>> /\
       <<FROM: Time.le f f'>> /\
-      <<RELEASED: View.opt_le r' r>>.
+      <<RELEASED: Message.le m' m>>.
   Proof.
     inv OP.
     - exploit add_get1; eauto. i. des. esplits; eauto; refl.
@@ -524,9 +530,9 @@ Module Memory.
   Qed.
 
   Lemma op_get2
-        m1 l f t v r m2 k
-        (OP: op m1 l f t v r m2 k):
-    get l t m2 = Some (f, Message.mk v r).
+        m1 l f t m m2 k
+        (OP: op m1 l f t m m2 k):
+    get l t m2 = Some (f, m).
   Proof.
     inv OP.
     - erewrite add_o; eauto. condtac; ss. des; congr.
@@ -535,14 +541,14 @@ Module Memory.
   Qed.
 
   Lemma op_get_inv
-        mem1 loc from to val released mem2 kind
-        l f t v r
-        (OP: op mem1 loc from to val released mem2 kind)
-        (GET2: get l t mem2 = Some (f, Message.mk v r)):
-    (l = loc /\ f = from /\ t = to /\ v = val /\ r = released) \/
+        mem1 loc from to msg mem2 kind
+        l f t m
+        (OP: op mem1 loc from to msg mem2 kind)
+        (GET2: get l t mem2 = Some (f, m)):
+    (l = loc /\ f = from /\ t = to /\ m = msg) \/
     (__guard__ (l <> loc \/ t <> to) /\
      exists f',
-       <<GET1: get l t mem1 = Some (f', Message.mk v r)>> /\
+       <<GET1: get l t mem1 = Some (f', m)>> /\
        <<FROM: Time.le f' f>>).
   Proof.
     revert GET2. inv OP.
@@ -561,15 +567,15 @@ Module Memory.
   Qed.
 
   Lemma future_get1
-        loc from to val released mem1 mem2
+        loc from to msg mem1 mem2
         (LE: future mem1 mem2)
-        (GET: get loc to mem1 = Some (from, Message.mk val released)):
-    exists from' released',
-      <<GET: get loc to mem2 = Some (from', Message.mk val released')>> /\
+        (GET: get loc to mem1 = Some (from, msg)):
+    exists from' msg',
+      <<GET: get loc to mem2 = Some (from', msg')>> /\
       <<FROM: Time.le from from'>> /\
-      <<RELEASED: View.opt_le released' released>>.
+      <<RELEASED: Message.le msg' msg>>.
   Proof.
-    revert from released GET. induction LE.
+    revert from msg GET. induction LE.
     { i. esplits; eauto; refl. }
     i. inv H. exploit op_get1; eauto. i. des.
     exploit IHLE; eauto. i. des.
@@ -610,9 +616,9 @@ Module Memory.
 
   Lemma add_closed_timemap
         times
-        mem1 loc from to val released mem2
+        mem1 loc from to msg mem2
         (CLOSED: closed_timemap times mem1)
-        (ADD: add mem1 loc from to val released mem2):
+        (ADD: add mem1 loc from to msg mem2):
     closed_timemap times mem2.
   Proof.
     ii. erewrite add_o; eauto. condtac; ss.
@@ -621,9 +627,9 @@ Module Memory.
 
   Lemma add_closed_view
         view
-        mem1 loc from to val released mem2
+        mem1 loc from to msg mem2
         (CLOSED: closed_view view mem1)
-        (ADD: add mem1 loc from to val released mem2):
+        (ADD: add mem1 loc from to msg mem2):
     closed_view view mem2.
   Proof.
     inv CLOSED. econs; eauto.
@@ -633,20 +639,20 @@ Module Memory.
 
   Lemma add_closed_opt_view
         view
-        mem1 loc from to val released mem2
+        mem1 loc from to msg mem2
         (CLOSED: closed_opt_view view mem1)
-        (ADD: add mem1 loc from to val released mem2):
+        (ADD: add mem1 loc from to msg mem2):
     closed_opt_view view mem2.
   Proof.
     inv CLOSED; econs. eapply add_closed_view; eauto.
   Qed.
 
   Lemma add_closed
-        mem1 loc from to val released mem2
+        mem1 loc from to msg mem2
         (CLOSED: closed mem1)
-        (REL_CLOSED: closed_opt_view released mem2)
-        (REL_TS: Time.le (released.(View.unwrap).(View.rlx) loc) to)
-        (ADD: add mem1 loc from to val released mem2):
+        (REL_CLOSED: closed_opt_view msg.(Message.view) mem2)
+        (REL_TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to)
+        (ADD: add mem1 loc from to msg mem2):
     closed mem2.
   Proof.
     inv CLOSED. econs.
@@ -659,9 +665,9 @@ Module Memory.
 
   Lemma split_closed_timemap
         times
-        mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2
+        mem1 loc ts1 ts2 ts3 msg2 msg3 mem2
         (CLOSED: closed_timemap times mem1)
-        (SPLIT: split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2):
+        (SPLIT: split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2):
     closed_timemap times mem2.
   Proof.
     ii. erewrite split_o; eauto. repeat condtac; ss.
@@ -671,9 +677,9 @@ Module Memory.
 
   Lemma split_closed_view
         view
-        mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2
+        mem1 loc ts1 ts2 ts3 msg2 msg3 mem2
         (CLOSED: closed_view view mem1)
-        (SPLIT: split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2):
+        (SPLIT: split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2):
     closed_view view mem2.
   Proof.
     inv CLOSED. econs; eauto.
@@ -683,20 +689,20 @@ Module Memory.
 
   Lemma split_closed_opt_view
         view
-        mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2
+        mem1 loc ts1 ts2 ts3 msg2 msg3 mem2
         (CLOSED: closed_opt_view view mem1)
-        (SPLIT: split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2):
+        (SPLIT: split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2):
     closed_opt_view view mem2.
   Proof.
     inv CLOSED; econs. eapply split_closed_view; eauto.
   Qed.
 
   Lemma split_closed
-        mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2
+        mem1 loc ts1 ts2 ts3 msg2 msg3 mem2
         (CLOSED: closed mem1)
-        (REL_CLOSED: closed_opt_view released2 mem2)
-        (REL_TS: Time.le (released2.(View.unwrap).(View.rlx) loc) ts2)
-        (SPLIT: split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2):
+        (REL_CLOSED: closed_opt_view msg2.(Message.view) mem2)
+        (REL_TS: Time.le (msg2.(Message.view).(View.unwrap).(View.rlx) loc) ts2)
+        (SPLIT: split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2):
     closed mem2.
   Proof.
     inv CLOSED. econs.
@@ -714,9 +720,9 @@ Module Memory.
 
   Lemma lower_closed_timemap
         times
-        mem1 loc from to val released1 released2 mem2
+        mem1 loc from to msg1 msg2 mem2
         (CLOSED: closed_timemap times mem1)
-        (LOWER: lower mem1 loc from to val released1 released2 mem2):
+        (LOWER: lower mem1 loc from to msg1 msg2 mem2):
     closed_timemap times mem2.
   Proof.
     ii. erewrite lower_o; eauto. condtac; ss.
@@ -725,9 +731,9 @@ Module Memory.
 
   Lemma lower_closed_view
         view
-        mem1 loc from to val released1 released2 mem2
+        mem1 loc from to msg1 msg2 mem2
         (CLOSED: closed_view view mem1)
-        (LOWER: lower mem1 loc from to val released1 released2 mem2):
+        (LOWER: lower mem1 loc from to msg1 msg2 mem2):
     closed_view view mem2.
   Proof.
     inv CLOSED. econs; eauto.
@@ -737,20 +743,20 @@ Module Memory.
 
   Lemma lower_closed_opt_view
         view
-        mem1 loc from to val released1 released2 mem2
+        mem1 loc from to msg1 msg2 mem2
         (CLOSED: closed_opt_view view mem1)
-        (LOWER: lower mem1 loc from to val released1 released2 mem2):
+        (LOWER: lower mem1 loc from to msg1 msg2 mem2):
     closed_opt_view view mem2.
   Proof.
     inv CLOSED; econs. eapply lower_closed_view; eauto.
   Qed.
 
   Lemma lower_closed
-        mem1 loc from to val released1 released2 mem2
+        mem1 loc from to msg1 msg2 mem2
         (CLOSED: closed mem1)
-        (REL_CLOSED: closed_opt_view released2 mem2)
-        (REL_TS: Time.le (released2.(View.unwrap).(View.rlx) loc) to)
-        (LOWER: lower mem1 loc from to val released1 released2 mem2):
+        (REL_CLOSED: closed_opt_view msg2.(Message.view) mem2)
+        (REL_TS: Time.le (msg2.(Message.view).(View.unwrap).(View.rlx) loc) to)
+        (LOWER: lower mem1 loc from to msg1 msg2 mem2):
     closed mem2.
   Proof.
     inv CLOSED. econs.
@@ -763,9 +769,9 @@ Module Memory.
 
   Lemma op_closed_timemap
         times
-        mem1 loc from to val released mem2 kind
+        mem1 loc from to msg mem2 kind
         (CLOSED: closed_timemap times mem1)
-        (OP: op mem1 loc from to val released mem2 kind):
+        (OP: op mem1 loc from to msg mem2 kind):
     closed_timemap times mem2.
   Proof.
     inv OP.
@@ -776,9 +782,9 @@ Module Memory.
 
   Lemma op_closed_view
         view
-        mem1 loc from to val released mem2 kind
+        mem1 loc from to msg mem2 kind
         (CLOSED: closed_view view mem1)
-        (OP: op mem1 loc from to val released mem2 kind):
+        (OP: op mem1 loc from to msg mem2 kind):
     closed_view view mem2.
   Proof.
     inv OP.
@@ -789,9 +795,9 @@ Module Memory.
 
   Lemma promise_closed_timemap
         times
-        promises1 mem1 loc from to val released promises2 mem2 kind
+        promises1 mem1 loc from to msg promises2 mem2 kind
         (CLOSED: closed_timemap times mem1)
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind):
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind):
     closed_timemap times mem2.
   Proof.
     eapply op_closed_timemap; eauto.
@@ -800,9 +806,9 @@ Module Memory.
 
   Lemma promise_closed_view
         view
-        promises1 mem1 loc from to val released promises2 mem2 kind
+        promises1 mem1 loc from to msg promises2 mem2 kind
         (CLOSED: closed_view view mem1)
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind):
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind):
     closed_view view mem2.
   Proof.
     eapply op_closed_view; eauto.
@@ -811,9 +817,9 @@ Module Memory.
 
   Lemma promise_closed_opt_view
         view
-        promises1 mem1 loc from to val released promises2 mem2 kind
+        promises1 mem1 loc from to msg promises2 mem2 kind
         (CLOSED: closed_opt_view view mem1)
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind):
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind):
     closed_opt_view view mem2.
   Proof.
     inv CLOSED; econs. eapply promise_closed_view; eauto.
@@ -862,8 +868,8 @@ Module Memory.
   Qed.
 
   Lemma singleton_closed_timemap
-        loc from to val released mem
-        (GET: get loc to mem = Some (from, Message.mk val released))
+        loc from to msg mem
+        (GET: get loc to mem = Some (from, msg))
         (INHABITED: inhabited mem):
     closed_timemap (TimeMap.singleton loc to) mem.
   Proof.
@@ -873,8 +879,8 @@ Module Memory.
   Qed.
 
   Lemma singleton_ur_closed_view
-        loc from to val released mem
-        (GET: get loc to mem = Some (from, Message.mk val released))
+        loc from to msg mem
+        (GET: get loc to mem = Some (from, msg))
         (INHABITED: inhabited mem):
     closed_view (View.singleton_ur loc to) mem.
   Proof.
@@ -884,8 +890,8 @@ Module Memory.
   Qed.
 
   Lemma singleton_rw_closed_view
-        loc from to val released mem
-        (GET: get loc to mem = Some (from, Message.mk val released))
+        loc from to msg mem
+        (GET: get loc to mem = Some (from, msg))
         (INHABITED: inhabited mem):
     closed_view (View.singleton_rw loc to) mem.
   Proof.
@@ -895,8 +901,8 @@ Module Memory.
   Qed.
 
   Lemma singleton_ur_if_closed_view
-        cond loc from to val released mem
-        (GET: get loc to mem = Some (from, Message.mk val released))
+        cond loc from to msg mem
+        (GET: get loc to mem = Some (from, msg))
         (INHABITED: inhabited mem):
     closed_view (View.singleton_ur_if cond loc to) mem.
   Proof.
@@ -919,9 +925,9 @@ Module Memory.
   Qed.
 
   Lemma add_finite
-        mem1 loc from to val released mem2
+        mem1 loc from to msg mem2
         (FINITE: finite mem1)
-        (ADD: add mem1 loc from to val released mem2):
+        (ADD: add mem1 loc from to msg mem2):
     finite mem2.
   Proof.
     unfold finite in *. des. exists ((loc, to) :: dom). i.
@@ -930,9 +936,9 @@ Module Memory.
   Qed.
 
   Lemma split_finite
-        mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2
+        mem1 loc ts1 ts2 ts3 msg2 msg3 mem2
         (FINITE: finite mem1)
-        (SPLIT: split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2):
+        (SPLIT: split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2):
     finite mem2.
   Proof.
     unfold finite in *. des. exists ((loc, ts2) :: dom). i.
@@ -943,9 +949,9 @@ Module Memory.
   Qed.
 
   Lemma lower_finite
-        mem1 loc from to val released1 released2 mem2
+        mem1 loc from to msg1 msg2 mem2
         (FINITE: finite mem1)
-        (LOWER: lower mem1 loc from to val released1 released2 mem2):
+        (LOWER: lower mem1 loc from to msg1 msg2 mem2):
     finite mem2.
   Proof.
     unfold finite in *. des. exists dom. i.
@@ -955,9 +961,9 @@ Module Memory.
   Qed.
 
   Lemma remove_finite
-        mem1 loc from to val released mem2
+        mem1 loc from to msg mem2
         (FINITE: finite mem1)
-        (REMOVE: remove mem1 loc from to val released mem2):
+        (REMOVE: remove mem1 loc from to msg mem2):
     finite mem2.
   Proof.
     unfold finite in *. des. exists dom. i.
@@ -968,14 +974,14 @@ Module Memory.
   (* Lemmas on promise & remove *)
 
   Lemma promise_get1
-        promises1 mem1 loc from to val released promises2 mem2 kind
-        l t f v r
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind)
-        (GET: get l t mem1 = Some (f, Message.mk v r)):
-    exists f' r',
-      <<GET: get l t mem2 = Some (f', Message.mk v r')>> /\
+        promises1 mem1 loc from to msg promises2 mem2 kind
+        l t f m
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind)
+        (GET: get l t mem1 = Some (f, m)):
+    exists f' m',
+      <<GET: get l t mem2 = Some (f', m')>> /\
       <<FROM: Time.le f f'>> /\
-      <<RELEASED: View.opt_le r' r>>.
+      <<RELEASED: Message.le m' m>>.
   Proof.
     inv PROMISE.
     - eapply op_get1; eauto. econs 1. eauto.
@@ -984,9 +990,9 @@ Module Memory.
   Qed.
 
   Lemma promise_get2
-        promises1 mem1 loc from to val released promises2 mem2 kind
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind):
-    get loc to promises2 = Some (from, Message.mk val released).
+        promises1 mem1 loc from to msg promises2 mem2 kind
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind):
+    get loc to promises2 = Some (from, msg).
   Proof.
     inv PROMISE.
     - eapply op_get2. econs 1. eauto.
@@ -995,14 +1001,14 @@ Module Memory.
   Qed.
 
   Lemma promise_promises_get1
-        promises1 mem1 loc from to val released promises2 mem2 kind
-        l t f v r
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind)
-        (GET: get l t promises1 = Some (f, Message.mk v r)):
-    exists f' r',
-      <<GET: get l t promises2 = Some (f', Message.mk v r')>> /\
+        promises1 mem1 loc from to msg promises2 mem2 kind
+        l t f m
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind)
+        (GET: get l t promises1 = Some (f, m)):
+    exists f' m',
+      <<GET: get l t promises2 = Some (f', m')>> /\
       <<FROM: Time.le f f'>> /\
-      <<RELEASED: View.opt_le r' r>>.
+      <<RELEASED: Message.le m' m>>.
   Proof.
     inv PROMISE.
     - eapply op_get1; eauto. econs 1. eauto.
@@ -1011,9 +1017,9 @@ Module Memory.
   Qed.
 
   Lemma op_future0
-        mem1 loc from to val released mem2 kind
+        mem1 loc from to msg mem2 kind
         (INHABITED1: inhabited mem1)
-        (OP: op mem1 loc from to val released mem2 kind):
+        (OP: op mem1 loc from to msg mem2 kind):
     inhabited mem2.
   Proof.
     inv OP.
@@ -1023,11 +1029,11 @@ Module Memory.
   Qed.
 
   Lemma op_future
-        mem1 loc from to val released mem2 kind
+        mem1 loc from to msg mem2 kind
         (CLOSED1: closed mem1)
-        (CLOSED_REL: closed_opt_view released mem2)
-        (OP: op mem1 loc from to val released mem2 kind)
-        (REL_TS: Time.le (released.(View.unwrap).(View.rlx) loc) to):
+        (CLOSED_REL: closed_opt_view msg.(Message.view) mem2)
+        (OP: op mem1 loc from to msg mem2 kind)
+        (REL_TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to):
     <<CLOSED2: closed mem2>> /\
     <<FUTURE: future mem1 mem2>>.
   Proof.
@@ -1040,11 +1046,11 @@ Module Memory.
   Qed.
 
   Lemma promise_future0
-        promises1 mem1 loc from to val released promises2 mem2 kind
+        promises1 mem1 loc from to msg promises2 mem2 kind
         (LE_PROMISES1: le promises1 mem1)
         (FINITE1: finite promises1)
         (INHABITED1: inhabited mem1)
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind):
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind):
     <<LE_PROMISES2: le promises2 mem2>> /\
     <<FINITE2: finite promises2>> /\
     <<INHABITED2: inhabited mem2>>.
@@ -1071,12 +1077,12 @@ Module Memory.
   Qed.
 
   Lemma promise_future
-        promises1 mem1 loc from to val released promises2 mem2 kind
+        promises1 mem1 loc from to msg promises2 mem2 kind
         (LE_PROMISES1: le promises1 mem1)
         (FINITE1: finite promises1)
         (CLOSED1: closed mem1)
-        (CLOSED_REL: closed_opt_view released mem2)
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind):
+        (CLOSED_REL: closed_opt_view msg.(Message.view) mem2)
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind):
     <<LE_PROMISES2: le promises2 mem2>> /\
     <<FINITE2: finite promises2>> /\
     <<CLOSED2: closed mem2>> /\
@@ -1090,11 +1096,11 @@ Module Memory.
   Qed.
 
   Lemma promise_disjoint
-        promises1 mem1 loc from to val released promises2 mem2 ctx kind
+        promises1 mem1 loc from to msg promises2 mem2 ctx kind
         (LE_PROMISES1: le promises1 mem1)
         (FINITE1: finite promises1)
         (CLOSED1: closed mem1)
-        (PROMISE: promise promises1 mem1 loc from to val released promises2 mem2 kind)
+        (PROMISE: promise promises1 mem1 loc from to msg promises2 mem2 kind)
         (LE_PROMISES: le ctx mem1)
         (DISJOINT: disjoint promises1 ctx):
     <<DISJOINT: disjoint promises2 ctx>> /\
@@ -1160,10 +1166,10 @@ Module Memory.
   Qed.
 
   Lemma remove_future
-        promises1 mem1 loc from to val released promises2
+        promises1 mem1 loc from to msg promises2
         (LE_PROMISES1: le promises1 mem1)
         (FINITE1: finite promises1)
-        (REMOVE: remove promises1 loc from to val released promises2):
+        (REMOVE: remove promises1 loc from to msg promises2):
     <<LE_PROMISES2: le promises2 mem1>> /\
     <<FINITE2: finite promises2>>.
   Proof.
@@ -1173,9 +1179,9 @@ Module Memory.
   Qed.
 
   Lemma remove_disjoint
-        promises1 mem1 loc from to val released promises2 ctx
+        promises1 mem1 loc from to msg promises2 ctx
         (LE_PROMISES1: le promises1 mem1)
-        (REMOVE: remove promises1 loc from to val released promises2)
+        (REMOVE: remove promises1 loc from to msg promises2)
         (LE_PROMISES: le ctx mem1)
         (DISJOINT: disjoint promises1 ctx):
     <<DISJOINT: disjoint promises2 ctx>>.
@@ -1226,7 +1232,7 @@ Module Memory.
     <<FUTURE: future mem1 mem2>>.
   Proof.
     inv PROMISE.
-    hexploit promise_future; eauto. i. des.
+    hexploit promise_future; eauto; ss. i. des.
     hexploit remove_future; eauto. i. des.
     splits; ss.
   Qed.
@@ -1291,7 +1297,7 @@ Module Memory.
   Qed.
 
   Lemma max_timemap_spec' tm mem
-        (TIMEMAP: forall loc, exists from to val released, Time.le (tm loc) to /\ get loc to mem = Some (from, Message.mk val released))
+        (TIMEMAP: forall loc, exists from to msg, Time.le (tm loc) to /\ get loc to mem = Some (from, msg))
         (INHABITED: inhabited mem):
     TimeMap.le tm (max_timemap mem).
   Proof.
@@ -1333,8 +1339,8 @@ Module Memory.
   Qed.
 
   Lemma add_max_timemap
-        mem1 mem2 loc from to val released
-        (ADD: add mem1 loc from to val released mem2)
+        mem1 mem2 loc from to msg
+        (ADD: add mem1 loc from to msg mem2)
         (INHABITED: inhabited mem1):
     max_timemap mem2 = TimeMap.join (max_timemap mem1) (TimeMap.singleton loc to).
   Proof.
@@ -1355,8 +1361,8 @@ Module Memory.
   Qed.
 
   Lemma add_max_view
-        mem1 mem2 loc from to val released
-        (ADD: add mem1 loc from to val released mem2)
+        mem1 mem2 loc from to msg
+        (ADD: add mem1 loc from to msg mem2)
         (INHABITED: inhabited mem1):
     max_view mem2 = View.join (max_view mem1) (View.singleton_ur loc to).
   Proof.
@@ -1366,8 +1372,8 @@ Module Memory.
   Qed.
 
   Lemma closed_timemap_add
-        loc from to val released mem tm
-        (GET: get loc to mem = Some (from, Message.mk val released))
+        loc from to msg mem tm
+        (GET: get loc to mem = Some (from, msg))
         (CLOSED: closed_timemap tm mem):
     closed_timemap (TimeMap.add loc to tm) mem.
   Proof.
@@ -1389,9 +1395,9 @@ Module Memory.
   Qed.
 
   Lemma max_released_closed
-        mem1 loc from to val released mem2
+        mem1 loc from to msg mem2
         (CLOSED: closed mem1)
-        (ADD: add mem1 loc from to val released mem2):
+        (ADD: add mem1 loc from to msg mem2):
     <<CLOSED: closed_view (max_released mem1 loc to) mem2>> /\
     <<REL_TS: Time.le ((max_released mem1 loc to).(View.rlx) loc) to>>.
   Proof.
@@ -1408,12 +1414,12 @@ Module Memory.
   Qed.
 
   Lemma max_released_spec
-        mem1 loc from to val released mem2
+        mem1 loc from to msg mem2
         (CLOSED: closed mem1)
-        (ADD: add mem1 loc from to val released mem2)
-        (REL_CLOSED: closed_opt_view released mem2)
-        (REL_TS: Time.le (released.(View.unwrap).(View.rlx) loc) to):
-    View.opt_le released (Some (max_released mem1 loc to)).
+        (ADD: add mem1 loc from to msg mem2)
+        (REL_CLOSED: closed_opt_view msg.(Message.view) mem2)
+        (REL_TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to):
+    View.opt_le msg.(Message.view) (Some (max_released mem1 loc to)).
   Proof.
     inv REL_CLOSED; econs.
     hexploit add_inhabited; try apply CLOSED; eauto. i. des.
@@ -1423,34 +1429,35 @@ Module Memory.
     unfold max_released. econs; ss.
     - ii. unfold TimeMap.add. condtac.
       + subst. etrans; [|exact REL_TS].
-        inv ADD. inv ADD0. inv WF. apply WF0.
+        inv ADD. inv ADD0. destruct msg; inv WF; ss; clarify.
+        inv WF0. eauto.
       + etrans; [apply PLN|]. apply Time.join_spec; [refl|].
         unfold TimeMap.singleton, LocFun.add. condtac; ss. apply Time.bot_spec.
     - ii. unfold TimeMap.add. condtac.
-      + subst. ss.
+      + subst. destruct msg; ss; clarify.
       + etrans; [apply RLX|]. apply Time.join_spec; [refl|].
         unfold TimeMap.singleton, LocFun.add. condtac; ss. apply Time.bot_spec.
   Qed.
 
   Lemma add_exists
-        mem1 loc from to val released
+        mem1 loc from to msg
         (DISJOINT: forall to2 from2 msg2
                      (GET2: get loc to2 mem1 = Some (from2, msg2)),
             Interval.disjoint (from, to) (from2, to2))
         (TO1: Time.lt from to)
-        (WF: View.opt_wf released):
-    exists mem2, add mem1 loc from to val released mem2.
+        (WF: View.opt_wf msg.(Message.view)):
+    exists mem2, add mem1 loc from to msg mem2.
   Proof.
     exploit Cell.add_exists; eauto. i. des.
     eexists. econs; eauto.
   Qed.
 
   Lemma add_exists_max_ts
-        mem1 loc to val released
+        mem1 loc to msg
         (TS: Time.lt (max_ts loc mem1) to)
-        (WF: View.opt_wf released):
+        (WF: View.opt_wf msg.(Message.view)):
     exists mem2,
-      add mem1 loc (max_ts loc mem1) to val released mem2.
+      add mem1 loc (max_ts loc mem1) to msg mem2.
   Proof.
     eapply add_exists; eauto.
     i. exploit max_ts_spec; eauto. i. des.
@@ -1459,10 +1466,10 @@ Module Memory.
   Qed.
 
   Lemma add_exists_le
-        promises1 mem1 loc from to val released mem2
+        promises1 mem1 loc from to msg mem2
         (LE: le promises1 mem1)
-        (ADD: add mem1 loc from to val released mem2):
-    exists promises2, add promises1 loc from to val released promises2.
+        (ADD: add mem1 loc from to msg mem2):
+    exists promises2, add promises1 loc from to msg promises2.
   Proof.
     inv ADD.
     exploit Cell.add_exists_le; eauto.
@@ -1472,35 +1479,35 @@ Module Memory.
   Qed.
 
   Lemma promise_add_exists
-        promises1 mem1 loc from to val released mem2
+        promises1 mem1 loc from to msg mem2
         (LE_PROMISES1: le promises1 mem1)
-        (ADD: add mem1 loc from to val released mem2)
-        (REL: closed_opt_view released mem2)
-        (TS: Time.le (released.(View.unwrap).(View.rlx) loc) to):
+        (ADD: add mem1 loc from to msg mem2)
+        (REL: closed_opt_view msg.(Message.view) mem2)
+        (TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to):
     exists promises2,
-      promise promises1 mem1 loc from to val released promises2 mem2 op_kind_add.
+      promise promises1 mem1 loc from to msg promises2 mem2 op_kind_add.
   Proof.
     exploit add_exists_le; eauto. i. des.
     eexists. econs 1; s; eauto.
   Qed.
 
   Lemma split_exists
-        mem1 loc ts1 ts2 ts3 val2 val3 released2 released3
-        (GET2: get loc ts3 mem1 = Some (ts1, Message.mk val3 released3))
+        mem1 loc ts1 ts2 ts3 msg2 msg3
+        (GET2: get loc ts3 mem1 = Some (ts1, msg3))
         (TS12: Time.lt ts1 ts2)
         (TS23: Time.lt ts2 ts3)
-        (REL_WF: View.opt_wf released2):
-    exists mem2, split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2.
+        (REL_WF: View.opt_wf msg2.(Message.view)):
+    exists mem2, split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2.
   Proof.
     exploit Cell.split_exists; eauto. i. des.
     eexists. econs; eauto.
   Qed.
 
   Lemma split_exists_le
-        promises1 mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 promises2
+        promises1 mem1 loc ts1 ts2 ts3 msg2 msg3 promises2
         (LE: le promises1 mem1)
-        (SPLIT: split promises1 loc ts1 ts2 ts3 val2 val3 released2 released3 promises2):
-    exists mem2, split mem1 loc ts1 ts2 ts3 val2 val3 released2 released3 mem2.
+        (SPLIT: split promises1 loc ts1 ts2 ts3 msg2 msg3 promises2):
+    exists mem2, split mem1 loc ts1 ts2 ts3 msg2 msg3 mem2.
   Proof.
     inv SPLIT.
     exploit Cell.split_exists_le; eauto.
@@ -1510,22 +1517,22 @@ Module Memory.
   Qed.
 
   Lemma lower_exists
-        mem1 loc from to val released1 released2
-        (GET: get loc to mem1 = Some (from, Message.mk val released1))
+        mem1 loc from to msg1 msg2
+        (GET: get loc to mem1 = Some (from, msg1))
         (TS: Time.lt from to)
-        (REL_WF: View.opt_wf released2)
-        (REL_LE: View.opt_le released2 released1):
-    exists mem2, lower mem1 loc from to val released1 released2 mem2.
+        (REL_WF: View.opt_wf msg2.(Message.view))
+        (REL_LE: Message.le msg2 msg1):
+    exists mem2, lower mem1 loc from to msg1 msg2 mem2.
   Proof.
     exploit Cell.lower_exists; eauto. i. des.
     eexists. econs; eauto.
   Qed.
 
   Lemma lower_exists_le
-        promises1 mem1 loc from to val released1 released2 promises2
+        promises1 mem1 loc from to msg1 msg2 promises2
         (LE: le promises1 mem1)
-        (LOWER: lower promises1 loc from to val released1 released2 promises2):
-    exists mem2, lower mem1 loc from to val released1 released2 mem2.
+        (LOWER: lower promises1 loc from to msg1 msg2 promises2):
+    exists mem2, lower mem1 loc from to msg1 msg2 mem2.
   Proof.
     inv LOWER.
     exploit Cell.lower_exists_le; eauto.
@@ -1535,11 +1542,11 @@ Module Memory.
   Qed.
 
   Lemma lower_exists_same
-        mem1 loc from to val released
-        (GET: get loc to mem1 = Some (from, Message.mk val released))
+        mem1 loc from to msg
+        (GET: get loc to mem1 = Some (from, msg))
         (TS: Time.lt from to)
-        (REL_WF: View.opt_wf released):
-    lower mem1 loc from to val released released mem1.
+        (REL_WF: View.opt_wf msg.(Message.view)):
+    lower mem1 loc from to msg msg mem1.
   Proof.
     exploit lower_exists; eauto; try refl. i. des.
     cut (mem2 = mem1).
@@ -1549,13 +1556,13 @@ Module Memory.
   Qed.
 
   Lemma promise_exists_same
-        promises1 mem1 loc from to val released
-        (REL_WF: View.opt_wf released)
+        promises1 mem1 loc from to msg
+        (REL_WF: View.opt_wf msg.(Message.view))
         (LE: le promises1 mem1)
         (MEM: closed mem1)
-        (GET: get loc to promises1 = Some (from, Message.mk val released))
+        (GET: get loc to promises1 = Some (from, msg))
         (LT: Time.lt from to):
-    promise promises1 mem1 loc from to val released promises1 mem1 (op_kind_lower released).
+    promise promises1 mem1 loc from to msg promises1 mem1 (op_kind_lower msg).
   Proof.
     exploit lower_exists_same; eauto. i.
     exploit lower_exists_same; try apply LE; eauto. i.
@@ -1564,10 +1571,10 @@ Module Memory.
   Qed.
 
   Lemma remove_singleton
-        loc from to val released (LT:Time.lt from to):
-    remove (singleton loc val released LT) loc from to val released bot.
+        loc from to msg (LT:Time.lt from to):
+    remove (singleton loc msg LT) loc from to msg bot.
   Proof.
-    assert (bot = LocFun.add loc Cell.bot (singleton loc val released LT)).
+    assert (bot = LocFun.add loc Cell.bot (singleton loc msg LT)).
     { apply ext. i. rewrite bot_get.
       unfold get, LocFun.add, LocFun.find. condtac.
       - rewrite Cell.bot_get. auto.
@@ -1580,9 +1587,9 @@ Module Memory.
   Qed.
 
   Lemma remove_exists
-        mem1 loc from to val released
-        (GET: get loc to mem1 = Some (from, Message.mk val released)):
-    exists mem2, remove mem1 loc from to val released mem2.
+        mem1 loc from to msg
+        (GET: get loc to mem1 = Some (from, msg)):
+    exists mem2, remove mem1 loc from to msg mem2.
   Proof.
     exploit Cell.remove_exists; eauto. i. des.
     eexists. econs. eauto.
@@ -1590,7 +1597,7 @@ Module Memory.
 
   Definition nonsynch_loc (loc:Loc.t) (mem:t): Prop :=
     forall f t msg (GET: get loc t mem = Some (f, msg)),
-      msg.(Message.released) = None.
+      msg.(Message.view) = None.
 
   Definition nonsynch (mem:t): Prop :=
     forall loc, nonsynch_loc loc mem.

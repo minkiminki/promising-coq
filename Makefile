@@ -1,5 +1,5 @@
 COQMODULE    := cmem
-COQTHEORIES  := lib/sflib/*.v lib/hahn/*.v src/*/*.v
+COQTHEORIES  := lib/sflib/*.v lib/hahn/*.v src/lib/*.v src/lang/*.v src/while/*.v src/prop/*.v src/opt/*.v src/drf/*.v src/invariant/*.v
 
 .PHONY: all theories clean
 
@@ -26,9 +26,9 @@ Makefile.coq: Makefile $(COQTHEORIES)
    echo "-R src/while $(COQMODULE)"; \
    echo "-R src/prop $(COQMODULE)"; \
    echo "-R src/opt $(COQMODULE)"; \
-   echo "-R src/drf $(COQMODULE)"; \
+   # echo "-R src/drf $(COQMODULE)"; \
    echo "-R src/invariant $(COQMODULE)"; \
-   echo "-R src/axiomatic $(COQMODULE)"; \
+   # echo "-R src/axiomatic $(COQMODULE)"; \
    \
    echo $(COQTHEORIES)) > _CoqProject
 	coq_makefile -f _CoqProject -o Makefile.coq

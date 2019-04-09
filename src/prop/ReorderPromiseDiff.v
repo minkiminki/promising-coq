@@ -32,9 +32,9 @@ Lemma reorder_promise_read_diff
       lc2 lc2'
       mem0
       mem1
-      loc1 from1 to1 val1 released1 kind1
+      loc1 from1 to1 msg1 kind1
       loc2 to2 val2 released2 ord2
-      (STEP1: Local.promise_step lc1 mem0 loc1 from1 to1 val1 released1 lc1' mem1 kind1)
+      (STEP1: Local.promise_step lc1 mem0 loc1 from1 to1 msg1 lc1' mem1 kind1)
       (STEP2: Local.read_step lc2 mem1 loc2 to2 val2 released2 ord2 lc2')
       (LOCTS: (loc1, to1) <> (loc2, to2)):
   <<STEP1: Local.read_step lc2 mem0 loc2 to2 val2 released2 ord2 lc2'>>.
@@ -51,20 +51,20 @@ Lemma reorder_promise_promise_diff
       mem0 sc0
       mem1
       mem2
-      loc1 from1 to1 val1 released1 kind1
-      loc2 from2 to2 val2 released2 kind2
-      (STEP1: Local.promise_step lc1 mem0 loc1 from1 to1 val1 released1 lc1' mem1 kind1)
-      (STEP2: Local.promise_step lc2 mem1 loc2 from2 to2 val2 released2 lc2' mem2 kind2)
+      loc1 from1 to1 msg1 kind1
+      loc2 from2 to2 msg2 kind2
+      (STEP1: Local.promise_step lc1 mem0 loc1 from1 to1 msg1 lc1' mem1 kind1)
+      (STEP2: Local.promise_step lc2 mem1 loc2 from2 to2 msg2 lc2' mem2 kind2)
       (LOCAL1: Local.wf lc1 mem0)
       (LOCAL2: Local.wf lc2 mem0)
       (SC0: Memory.closed_timemap sc0 mem0)
       (MEM0: Memory.closed mem0)
       (DISJ: Local.disjoint lc1 lc2)
-      (REL_CLOSED: forall promises2' mem1' kind1' (PROMISE1: Memory.promise (Local.promises lc2) mem0 loc2 from2 to2 val2 released2 promises2' mem1' kind1'),
-          Memory.closed_opt_view released2 mem1'):
+      (REL_CLOSED: forall promises2' mem1' kind1' (PROMISE1: Memory.promise (Local.promises lc2) mem0 loc2 from2 to2 msg2 promises2' mem1' kind1'),
+          Memory.closed_opt_view msg2.(Message.view) mem1'):
   exists mem1',
-    <<STEP1: Local.promise_step lc2 mem0 loc2 from2 to2 val2 released2 lc2' mem1' kind2>> /\
-    <<STEP2: Local.promise_step lc1 mem1' loc1 from1 to1 val1 released1 lc1' mem2 kind1>>.
+    <<STEP1: Local.promise_step lc2 mem0 loc2 from2 to2 msg2 lc2' mem1' kind2>> /\
+    <<STEP2: Local.promise_step lc1 mem1' loc1 from1 to1 msg1 lc1' mem2 kind1>>.
 Proof.
   exploit Local.promise_step_disjoint; try exact STEP1; eauto. i. des.
   inv STEP1. inv STEP2. ss.
@@ -195,9 +195,9 @@ Lemma reorder_promise_write_diff
       sc0 mem0
       mem1
       sc2 mem2
-      loc1 from1 to1 val1 released1 kind1
+      loc1 from1 to1 msg1 kind1
       loc2 from2 to2 val2 releasedm2 released2 ord2 kind2
-      (STEP1: Local.promise_step lc1 mem0 loc1 from1 to1 val1 released1 lc1' mem1 kind1)
+      (STEP1: Local.promise_step lc1 mem0 loc1 from1 to1 msg1 lc1' mem1 kind1)
       (STEP2: Local.write_step lc2 sc0 mem1 loc2 from2 to2 val2 releasedm2 released2 ord2 lc2' sc2 mem2 kind2)
       (REL_WF: View.opt_wf releasedm2)
       (REL_CLOSED: Memory.closed_opt_view releasedm2 mem0)
@@ -208,7 +208,7 @@ Lemma reorder_promise_write_diff
       (MEM0: Memory.closed mem0):
   exists mem1',
     <<STEP1: Local.write_step lc2 sc0 mem0 loc2 from2 to2 val2 releasedm2 released2 ord2 lc2' sc2 mem1' kind2>> /\
-    <<STEP2: Local.promise_step lc1 mem1' loc1 from1 to1 val1 released1 lc1' mem2 kind1>>.
+    <<STEP2: Local.promise_step lc1 mem1' loc1 from1 to1 msg1 lc1' mem2 kind1>>.
 Proof.
   exploit Local.promise_step_future; eauto. i. des.
   exploit Local.promise_step_disjoint; eauto. i. des.
@@ -227,12 +227,12 @@ Proof.
 Qed.
 
 Lemma reorder_promise_program_diff
-      loc from to val released kind lc1 lc1'
+      loc from to msg kind lc1 lc1'
       e2 lang2 st2 st2' lc2 lc2'
       sc0 mem0
       mem1
       sc2 mem2
-      (STEP1: Local.promise_step lc1 mem0 loc from to val released lc1' mem1 kind)
+      (STEP1: Local.promise_step lc1 mem0 loc from to msg lc1' mem1 kind)
       (STEP2: Thread.program_step e2 (Thread.mk lang2 st2 lc2 sc0 mem1) (Thread.mk lang2 st2' lc2' sc2 mem2))
       (E2: forall val released ord, ThreadEvent.is_reading e2 <> Some (loc, to, val, released, ord))
       (LOCAL1: Local.wf lc1 mem0)
@@ -242,7 +242,7 @@ Lemma reorder_promise_program_diff
       (MEM0: Memory.closed mem0):
   exists mem1',
     <<STEP1: Thread.program_step e2 (Thread.mk lang2 st2 lc2 sc0 mem0) (Thread.mk lang2 st2' lc2' sc2 mem1')>> /\
-    <<STEP2: Local.promise_step lc1 mem1' loc from to val released lc1' mem2 kind>>.
+    <<STEP2: Local.promise_step lc1 mem1' loc from to msg lc1' mem2 kind>>.
 Proof.
   inv STEP2. inv LOCAL; ss.
   - (* silent *)

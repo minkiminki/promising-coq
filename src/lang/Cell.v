@@ -29,21 +29,47 @@ Module Message.
   Inductive le : t -> t -> Prop :=
   | le_intro
       val released released'
-      (RELEASED: View.opt_le released' released)
+      (RELEASED: View.opt_le released released')
     :
       le (mk val released) (mk val released')
-  | le_half_bot
+  | le_half_top
       msg
     :
-      le half msg
+      le msg half
   .
 
-  Inductive wf: t -> Prop :=
-  | wf_intro val released (WF: View.opt_wf released) :
-      wf (mk val released)
-  | wf_half :
-      wf half
-  .
+  Definition view (msg:t): option View.t :=
+    match msg with
+    | mk _ rel => rel
+    | half => None
+    end.
+
+  Program Instance le_PreOrder : PreOrder le.
+  Next Obligation.
+    ii. destruct x; econs. refl.
+  Qed.
+  Next Obligation.
+    ii. inv H; inv H0.
+    - econs. etrans; eauto.
+    - econs.
+    - econs.
+  Qed.
+
+  Lemma antisym a b
+        (AB: le a b)
+        (BA: le b a):
+    a = b.
+  Proof.
+    inv AB; inv BA; ss.
+    f_equal. apply View.opt_antisym; auto.
+  Qed.
+
+  (* Inductive wf: t -> Prop := *)
+  (* | wf_intro val released (WF: View.opt_wf released) : *)
+  (*     wf (mk val released) *)
+  (* | wf_half : *)
+  (*     wf half *)
+  (* . *)
 
 End Message.
 
@@ -118,7 +144,7 @@ Module Cell.
                           (GET2: DOMap.find to2 cell1 = Some (from2, msg2)),
             Interval.disjoint (from, to) (from2, to2))
         (TO: Time.lt from to)
-        (WF: Message.wf msg):
+        (WF: View.opt_wf msg.(Message.view)):
         add cell1 from to msg (DOMap.add to (from, msg) cell1)
     .
 
@@ -170,7 +196,7 @@ Module Cell.
         (GET2: DOMap.find ts3 cell1 = Some (ts1, msg3))
         (TS12: Time.lt ts1 ts2)
         (TS23: Time.lt ts2 ts3)
-        (REL_WF: Message.wf msg2):
+        (REL_WF: View.opt_wf msg2.(Message.view)):
         split cell1 ts1 ts2 ts3 msg2 msg3
               (DOMap.add ts2 (ts1, msg2)
               (DOMap.add ts3 (ts2, msg3) cell1))
@@ -233,7 +259,7 @@ Module Cell.
     | update_intro
         (GET2: DOMap.find to cell1 = Some (from, msg1))
         (TS: Time.lt from to)
-        (REL_WF: Message.wf msg2)
+        (REL_WF: View.opt_wf msg2.(Message.view))
         (REL_LE: Message.le msg2 msg1):
         lower cell1 from to msg1 msg2
               (DOMap.add to (from, msg2) cell1)
@@ -451,7 +477,7 @@ Module Cell.
                      (GET2: get to2 cell1 = Some (from2, msg2)),
             Interval.disjoint (from, to) (from2, to2))
         (TO1: Time.lt from to)
-        (WF: Message.wf msg):
+        (WF: View.opt_wf msg.(Message.view)):
     exists cell2, add cell1 from to msg cell2.
   Proof.
     destruct cell1. eexists (mk _). unfold add. econs; eauto.
@@ -462,7 +488,7 @@ Module Cell.
   Lemma add_exists_max_ts
         cell1 to msg
         (TO: Time.lt (max_ts cell1) to)
-        (WF: Message.wf msg):
+        (WF: View.opt_wf msg.(Message.view)):
     exists cell2, add cell1 (max_ts cell1) to msg cell2.
   Proof.
     apply add_exists; auto. i.
@@ -486,7 +512,7 @@ Module Cell.
         (GET2: get ts3 cell1 = Some (ts1, msg3))
         (TS12: Time.lt ts1 ts2)
         (TS23: Time.lt ts2 ts3)
-        (REL_WF: Message.wf msg2):
+        (REL_WF: View.opt_wf msg2.(Message.view)):
     exists cell2, split cell1 ts1 ts2 ts3 msg2 msg3 cell2.
   Proof.
     destruct cell1. eexists (mk _). unfold split. econs; eauto.
@@ -507,7 +533,7 @@ Module Cell.
         cell1 from to msg1 msg2
         (GET2: get to cell1 = Some (from, msg1))
         (TS: Time.lt from to)
-        (REL_WF: Message.wf msg2)
+        (REL_WF: View.opt_wf msg2.(Message.view))
         (REL_LE: Message.le msg2 msg1):
     exists cell2, lower cell1 from to msg1 msg2 cell2.
   Proof.

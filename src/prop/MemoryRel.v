@@ -27,25 +27,26 @@ Require Import MemoryMerge.
 Set Implicit Arguments.
 
 
-Definition VIEW_CMP := forall (loc:Loc.t) (ts:Time.t) (lhs rhs:option View.t), Prop.
+(* Definition VIEW_CMP := forall (loc:Loc.t) (ts:Time.t) (lhs rhs:option View.t), Prop. *)
+Definition MSG_CMP := forall (loc:Loc.t) (ts:Time.t) (lhs rhs:Message.t), Prop.
 
-Definition loctmeq: VIEW_CMP := fun _ _ (r1 r2: option View.t) => r1 = r2.
+Definition loctmeq: MSG_CMP := fun _ _ (m1 m2:Message.t) => m1 = m2.
 Hint Unfold loctmeq.
 
-Definition mem_sub (cmp: VIEW_CMP) (m1 m2: Memory.t) : Prop :=
-  forall loc ts from val rel1
-    (IN: Memory.get loc ts m1 = Some (from, Message.mk val rel1)),
-  exists rel2,
-  <<IN: Memory.get loc ts m2 = Some (from, Message.mk val rel2)>> /\
-  <<CMP: cmp loc ts rel1 rel2>>.
+Definition mem_sub (cmp: MSG_CMP) (m1 m2: Memory.t) : Prop :=
+  forall loc ts from msg1
+    (IN: Memory.get loc ts m1 = Some (from, msg1)),
+  exists msg2,
+  <<IN: Memory.get loc ts m2 = Some (from, msg2)>> /\
+  <<CMP: cmp loc ts msg1 msg2>>.
 
-Definition mem_eqrel (cmp: VIEW_CMP) (m1 m2: Memory.t) : Prop :=
+Definition mem_eqrel (cmp: MSG_CMP) (m1 m2: Memory.t) : Prop :=
   <<LR: mem_sub cmp m1 m2>> /\
   <<RL: mem_sub (fun l t x y => cmp l t y x) m2 m1>>.
 Hint Unfold mem_eqrel.
 
 Definition mem_eqlerel (m1 m2: Memory.t) : Prop :=
-  mem_eqrel (fun _ _ => View.opt_le) m1 m2.
+  mem_eqrel (fun _ _ => Message.le) m1 m2.
 Hint Unfold mem_eqlerel.
 
 Program Instance mem_eqlerel_PreOrder: PreOrder mem_eqlerel.
@@ -64,12 +65,12 @@ Qed.
 
 Lemma mem_eqlerel_get
       m1 m2
-      l f t v r2
+      l f t msg2
       (LE: mem_eqlerel m1 m2)
-      (GET2: Memory.get l t m2 = Some (f, Message.mk v r2)):
-  exists r1,
-    <<GET1: Memory.get l t m1 = Some (f, Message.mk v r1)>> /\
-    <<REL: View.opt_le r1 r2>>.
+      (GET2: Memory.get l t m2 = Some (f, msg2)):
+  exists msg1,
+    <<GET1: Memory.get l t m1 = Some (f, msg1)>> /\
+    <<REL: Message.le msg1 msg2>>.
 Proof. inv LE. des. exploit H0; eauto. Qed.
 
 Lemma mem_eqrel_closed_timemap
@@ -111,8 +112,8 @@ Proof.
 Qed.
 
 Lemma lower_mem_eqlerel
-      m1 loc from to val r1 r2 m2
-      (LOWER: Memory.lower m1 loc from to val r1 r2 m2):
+      m1 loc from to msg1 msg2 m2
+      (LOWER: Memory.lower m1 loc from to msg1 msg2 m2):
   mem_eqlerel m2 m1.
 Proof.
   econs; ii.
@@ -127,12 +128,12 @@ Proof.
 Qed.
 
 Lemma mem_eqrel_memory_op
-      m1 m2 m1' m2' released1 released2 kind1 kind2
+      m1 m2 m1' m2' msg1 msg2 kind1 kind2
       cmp
-      loc from to val
+      loc from to
       (EQMEM: mem_eqrel cmp m1 m2)
-      (OP1: Memory.op m1 loc from to val released1 m1' kind1)
-      (OP2: Memory.op m2 loc from to val released2 m2' kind2):
+      (OP1: Memory.op m1 loc from to msg1 m1' kind1)
+      (OP2: Memory.op m2 loc from to msg2 m2' kind2):
   Memory.op_kind_match kind1 kind2.
 Proof.
   inv OP1; inv OP2; try by econs.
@@ -168,17 +169,17 @@ Proof.
 Qed.
 
 Lemma mem_eqlerel_add
-      loc from to val released
+      loc from to msg
       m1 m2 m2'
       (MEMLE: mem_eqlerel m1 m2)
-      (ADD2: Memory.add m2 loc from to val released m2'):
+      (ADD2: Memory.add m2 loc from to msg m2'):
   exists m1',
-    <<ADD1: Memory.add m1 loc from to val released m1'>> /\
+    <<ADD1: Memory.add m1 loc from to msg m1'>> /\
     <<MEMLE': mem_eqlerel m1' m2'>>.
 Proof.
   exploit (@Memory.add_exists m1 loc from to);
     try by inv ADD2; inv ADD; eauto.
-  { i. destruct msg2. eapply MEMLE in GET2. des.
+  { i. eapply MEMLE in GET2. des.
     inv ADD2. inv ADD. eapply DISJOINT. eauto.
   }
   i. des. esplits; eauto.
@@ -194,14 +195,14 @@ Proof.
 Qed.
 
 Lemma mem_eqlerel_split
-      loc ts1 ts2 ts3 val2 val3 released2 released3
+      loc ts1 ts2 ts3 msg2 msg3
       m1 m2 m2' prm prm'
       (MEMLE: mem_eqlerel m1 m2)
       (PRM1: Memory.le prm m1)
-      (SPLIT2: Memory.split m2 loc ts1 ts2 ts3 val2 val3 released2 released3 m2')
-      (SPLITP2: Memory.split prm loc ts1 ts2 ts3 val2 val3 released2 released3 prm'):
+      (SPLIT2: Memory.split m2 loc ts1 ts2 ts3 msg2 msg3 m2')
+      (SPLITP2: Memory.split prm loc ts1 ts2 ts3 msg2 msg3 prm'):
   exists m1',
-    <<SPLIT2: Memory.split m1 loc ts1 ts2 ts3 val2 val3 released2 released3 m1'>> /\
+    <<SPLIT2: Memory.split m1 loc ts1 ts2 ts3 msg2 msg3 m1'>> /\
     <<MEMLE': mem_eqlerel m1' m2'>>.
 Proof.
   exploit Memory.split_get0; eauto. i. des. apply PRM1 in GET3.
@@ -222,18 +223,18 @@ Proof.
 Qed.
 
 Lemma mem_eqlerel_lower
-      loc from to val released1 released2
+      loc from to msg1 msg2
       m1 m2 m2' prm prm'
       (MEMLE: mem_eqlerel m1 m2)
       (PRM1: Memory.le prm m1)
-      (LOWER2: Memory.lower m2 loc from to val released1 released2 m2')
-      (LOWERP2: Memory.lower prm loc from to val released1 released2 prm'):
+      (LOWER2: Memory.lower m2 loc from to msg1 msg2 m2')
+      (LOWERP2: Memory.lower prm loc from to msg1 msg2 prm'):
   exists m1',
-    <<LOWER1: Memory.lower m1 loc from to val released1 released2 m1'>> /\
+    <<LOWER1: Memory.lower m1 loc from to msg1 msg2 m1'>> /\
     <<MEMLE': mem_eqlerel m1' m2'>>.
 Proof.
   exploit Memory.lower_get0; eauto. i. apply PRM1 in x0.
-  exploit (@Memory.lower_exists m1 loc from to val released1 released2);
+  exploit (@Memory.lower_exists m1 loc from to msg1 msg2);
     try by inv LOWER2; inv LOWER; eauto; try by viewtac. i. des.
   esplits; eauto.
   econs; esplits; ii; revert IN.
@@ -248,13 +249,13 @@ Proof.
 Qed.
 
 Lemma mem_eqlerel_promise
-      loc from to val released kind
+      loc from to msg kind
       m1 m2 m2' prm prm'
       (MEMLE: mem_eqlerel m1 m2)
       (PRM1: Memory.le prm m1)
-      (PROMISE2: Memory.promise prm m2 loc from to val released prm' m2' kind):
+      (PROMISE2: Memory.promise prm m2 loc from to msg prm' m2' kind):
   exists m1',
-    <<PROMISE1: Memory.promise prm m1 loc from to val released prm' m1' kind>> /\
+    <<PROMISE1: Memory.promise prm m1 loc from to msg prm' m1' kind>> /\
     <<MEMLE': mem_eqlerel m1' m2'>>.
 Proof.
   inv PROMISE2.
@@ -267,19 +268,19 @@ Proof.
 Qed.
 
 Lemma mem_eqlerel_add_forward
-      loc from to val released1 released2
+      loc from to msg1 msg2
       m1 m2 m2'
       (MEMLE: mem_eqlerel m2 m1)
-      (ADD2: Memory.add m2 loc from to val released2 m2')
-      (RELLE: View.opt_le released2 released1)
-      (RELWF: View.opt_wf released1):
+      (ADD2: Memory.add m2 loc from to msg2 m2')
+      (RELLE: Message.le msg2 msg1)
+      (RELWF: View.opt_wf msg1.(Message.view)):
   exists m1',
-    <<ADD1: Memory.add m1 loc from to val released1 m1'>> /\
+    <<ADD1: Memory.add m1 loc from to msg1 m1'>> /\
     <<MEMLE': mem_eqlerel m2' m1'>>.
 Proof.
   exploit (@Memory.add_exists m1 loc from to); eauto;
     try by inv ADD2; inv ADD; eauto.
-  { i. destruct msg2. eapply MEMLE in GET2. des.
+  { i. eapply MEMLE in GET2. des.
     inv ADD2. inv ADD. eapply DISJOINT. eauto.
   }
   i. des. esplits; eauto.
@@ -295,14 +296,14 @@ Proof.
 Qed.
 
 Lemma mem_eqlerel_split_forward
-      loc ts1 ts2 ts3 val2 val3 released2 released2' released3
+      loc ts1 ts2 ts3 msg2 msg2' msg3
       m1 m2 m2'
       (MEMLE: mem_eqlerel m2 m1)
-      (SPLIT2: Memory.split m2 loc ts1 ts2 ts3 val2 val3 released2 released3 m2')
-      (RELLE: View.opt_le released2 released2')
-      (RELWF: View.opt_wf released2'):
-  exists released3' m1',
-    <<SPLIT2: Memory.split m1 loc ts1 ts2 ts3 val2 val3 released2' released3' m1'>> /\
+      (SPLIT2: Memory.split m2 loc ts1 ts2 ts3 msg2 msg3 m2')
+      (RELLE: Message.le msg2 msg2')
+      (RELWF: View.opt_wf msg2'.(Message.view)):
+  exists msg3' m1',
+    <<SPLIT2: Memory.split m1 loc ts1 ts2 ts3 msg2' msg3' m1'>> /\
     <<MEMLE': mem_eqlerel m2' m1'>>.
 Proof.
   exploit Memory.split_get0; eauto. i. des.
@@ -324,17 +325,17 @@ Proof.
 Qed.
 
 Lemma mem_eqlerel_lower_forward
-      loc from to val released1 released2
+      loc from to msg1 msg2
       m1 m2 m2'
       (MEMLE: mem_eqlerel m2 m1)
-      (LOWER2: Memory.lower m2 loc from to val released1 released2 m2'):
-  exists released1' m1',
-    <<LOWER1: Memory.lower m1 loc from to val released1' released2 m1'>> /\
+      (LOWER2: Memory.lower m2 loc from to msg1 msg2 m2'):
+  exists msg1' m1',
+    <<LOWER1: Memory.lower m1 loc from to msg1' msg2 m1'>> /\
     <<MEMLE': mem_eqlerel m2' m1'>>.
 Proof.
   exploit Memory.lower_get0; eauto. i.
   apply MEMLE in x0. des.
-  exploit (@Memory.lower_exists m1 loc from to val rel2 released2); eauto;
+  exploit (@Memory.lower_exists m1 loc from to msg0 msg2); eauto;
     try by inv LOWER2; inv LOWER; eauto; try by viewtac.
   { etrans; eauto. inv LOWER2. inv LOWER. auto. }
   i. des.

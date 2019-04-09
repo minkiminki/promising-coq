@@ -76,8 +76,8 @@ Lemma sim_local_promise
       lc1_src mem1_src
       lc1_tgt mem1_tgt
       lc2_tgt mem2_tgt
-      loc from to val released kind
-      (STEP_TGT: Local.promise_step lc1_tgt mem1_tgt loc from to val released lc2_tgt mem2_tgt kind)
+      loc from to msg kind
+      (STEP_TGT: Local.promise_step lc1_tgt mem1_tgt loc from to msg lc2_tgt mem2_tgt kind)
       (LOCAL1: sim_local lc1_src lc1_tgt)
       (MEM1: sim_memory mem1_src mem1_tgt)
       (WF1_SRC: Local.wf lc1_src mem1_src)
@@ -85,7 +85,7 @@ Lemma sim_local_promise
       (MEM1_SRC: Memory.closed mem1_src)
       (MEM1_TGT: Memory.closed mem1_tgt):
   exists lc2_src mem2_src,
-    <<STEP_SRC: Local.promise_step lc1_src mem1_src loc from to val released lc2_src mem2_src kind>> /\
+    <<STEP_SRC: Local.promise_step lc1_src mem1_src loc from to msg lc2_src mem2_src kind>> /\
     <<LOCAL2: sim_local lc2_src lc2_tgt>> /\
     <<MEM2: sim_memory mem2_src mem2_tgt>>.
 Proof.
@@ -124,11 +124,11 @@ Lemma sim_local_read
 Proof.
   inv LOCAL1. inv STEP_TGT.
   exploit sim_memory_get; try apply MEM1; eauto. i. des.
-  esplits; eauto.
+  inv RELEASED. esplits; eauto.
   - econs; eauto. eapply TViewFacts.readable_mon; eauto. apply TVIEW.
   - econs; eauto. s. apply TViewFacts.read_tview_mon; auto.
     + apply WF1_TGT.
-    + eapply MEM1_TGT. eauto.
+    + inv MEM1_TGT. exploit CLOSED; eauto. i. des. eauto.
 Qed.
 
 Lemma sim_local_fulfill

@@ -76,13 +76,13 @@ Lemma progress_promise_step
       (WF_REL: View.opt_wf releasedm)
       (CLOSED_REL: Memory.closed_opt_view releasedm mem1):
   exists promises2 mem2,
-    Local.promise_step lc1 mem1 loc (Memory.max_ts loc mem1) to val
-                       (TView.write_released (Local.tview lc1) sc1 loc to releasedm ord)
+    Local.promise_step lc1 mem1 loc (Memory.max_ts loc mem1) to
+                       (Message.mk val (TView.write_released (Local.tview lc1) sc1 loc to releasedm ord))
                        (Local.mk lc1.(Local.tview) promises2) mem2 Memory.op_kind_add.
 Proof.
   exploit (@Memory.add_exists_max_ts
-             mem1 loc to val
-             (TView.write_released (Local.tview lc1) sc1 loc to releasedm ord)); eauto.
+             mem1 loc to
+             (Message.mk val (TView.write_released (Local.tview lc1) sc1 loc to releasedm ord))); eauto.
   { eapply TViewFacts.write_future0; eauto. apply WF1. }
   i. des.
   exploit Memory.add_exists_le; try apply WF1; eauto. i. des.
@@ -107,18 +107,60 @@ Proof.
     + erewrite Memory.add_o; eauto. condtac; eauto. ss. des; congr.
 Qed.
 
-Lemma progress_read_step
-      lc1 mem1
-      loc ord
-      (WF1: Local.wf lc1 mem1)
-      (MEM1: Memory.closed mem1):
-  exists val released lc2,
-    Local.read_step lc1 mem1 loc (Memory.max_ts loc mem1) val released ord lc2.
-Proof.
-  exploit (Memory.max_ts_spec loc); try apply MEM1; eauto. i. des.
-  esplits; eauto. econs; eauto.
-  econs; try by i; eapply Memory.max_ts_spec2; apply WF1.
-Qed.
+(* Lemma progress_promise_step *)
+(*       lc1 sc1 mem1 *)
+(*       loc to val releasedm ord *)
+(*       (LT: Time.lt (Memory.max_ts loc mem1) to) *)
+(*       (WF1: Local.wf lc1 mem1) *)
+(*       (MEM1: Memory.closed mem1) *)
+(*       (SC1: Memory.closed_timemap sc1 mem1) *)
+(*       (WF_REL: View.opt_wf releasedm) *)
+(*       (CLOSED_REL: Memory.closed_opt_view releasedm mem1): *)
+(*   exists promises2 mem2, *)
+(*     Local.promise_step lc1 mem1 loc (Memory.max_ts loc mem1) to val *)
+(*                        (TView.write_released (Local.tview lc1) sc1 loc to releasedm ord) *)
+(*                        (Local.mk lc1.(Local.tview) promises2) mem2 Memory.op_kind_add. *)
+(* Proof. *)
+(*   exploit (@Memory.add_exists_max_ts *)
+(*              mem1 loc to val *)
+(*              (TView.write_released (Local.tview lc1) sc1 loc to releasedm ord)); eauto. *)
+(*   { eapply TViewFacts.write_future0; eauto. apply WF1. } *)
+(*   i. des. *)
+(*   exploit Memory.add_exists_le; try apply WF1; eauto. i. des. *)
+(*   hexploit Memory.add_inhabited; try apply x0; [viewtac|]. i. des. *)
+(*   esplits. econs. *)
+(*   - econs; eauto. *)
+(*     unfold TView.write_released. *)
+(*     viewtac; repeat (condtac; viewtac); *)
+(*       (try by apply Time.bot_spec); *)
+(*       (try by unfold TimeMap.singleton, LocFun.add; condtac; [refl|congr]); *)
+(*       (try by left; eapply TimeFacts.le_lt_lt; [|eauto]; *)
+(*        eapply closed_timemap_max_ts; apply WF1). *)
+(*     left. eapply TimeFacts.le_lt_lt; [|eauto]. *)
+(*     eapply closed_timemap_max_ts. apply Memory.unwrap_closed_opt_view; viewtac. *)
+(*   - unfold TView.write_released. condtac; econs. *)
+(*     viewtac; *)
+(*       repeat condtac; viewtac; *)
+(*         (try eapply Memory.add_closed_view; eauto); *)
+(*         (try apply WF1). *)
+(*     + viewtac. *)
+(*     + erewrite Memory.add_o; eauto. condtac; eauto. ss. des; congr. *)
+(*     + erewrite Memory.add_o; eauto. condtac; eauto. ss. des; congr. *)
+(* Qed. *)
+
+(* Lemma progress_read_step *)
+(*       lc1 mem1 *)
+(*       loc ord *)
+(*       (WF1: Local.wf lc1 mem1) *)
+(*       (NOHALF: Memory.no_half lc1.(Local.promises) mem1) *)
+(*       (MEM1: Memory.closed mem1): *)
+(*   exists val released lc2, *)
+(*     Local.read_step lc1 mem1 loc (Memory.max_ts loc mem1) val released ord lc2. *)
+(* Proof. *)
+(*   exploit (Memory.max_ts_spec loc); try apply MEM1; eauto. i. des. *)
+(*   esplits; eauto. econs; eauto. *)
+(*   econs; try by i; eapply Memory.max_ts_spec2; apply WF1. *)
+(* Qed. *)
 
 Lemma progress_write_step
       lc1 sc1 mem1

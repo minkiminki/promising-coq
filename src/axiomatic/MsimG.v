@@ -37,7 +37,7 @@ Proof. tauto. Qed.
 
 Lemma gstep_tm_to_a acts sb rmw rf mo sc acts' sb' rmw' rf' mo' sc'
   prev a (GSTEP: gstep acts sb rmw rf mo sc acts' sb' rmw' rf' mo' sc' prev a)
-  (COH: Coherent acts sb rmw rf mo sc) 
+  (COH: Coherent acts sb rmw rf mo sc)
   tm l 
   (TM_HB: inclusion (tm acts' sb' rmw' rf' sc' l ;; hb acts' sb' rmw' rf') (tm acts' sb' rmw' rf' sc' l))
   (TM_MON: inclusion (tm acts sb rmw rf sc l) (tm acts' sb' rmw' rf' sc' l))
@@ -265,8 +265,8 @@ Qed.
 
 Lemma memory_add_bot l from to val released (LT : Time.lt from to) 
       (WF : View.opt_wf released) :
-  Memory.add Memory.bot l from to val released 
-    (Memory.singleton l val released LT). 
+  Memory.add Memory.bot l from to (Message.mk val released) 
+    (Memory.singleton l (Message.mk val released) LT). 
 Proof.
   econs; econs; eauto.
   red; ins; unfold DenseOrder.DOMap.find in *; ins.
@@ -286,7 +286,7 @@ Lemma memory_exists
     Memory.write Memory.bot mem l from to v 
                  released Memory.bot mem' Memory.op_kind_add .
 Proof.
-  exploit (@Memory.add_exists mem l from to v); try edone.
+  exploit (@Memory.add_exists mem l from to (Message.mk v released)); try edone.
   intro M; desc; exists mem2.
   econs; eauto using Memory.remove_singleton.
   econs; try apply (memory_add_bot _ _ FROM); eauto.
@@ -352,29 +352,29 @@ Proof.
     red in C; desc; intros; cdes COH'; rewrite Atomicityalt in *; eapply Cat;
      try exact C; try exact C0; eauto.
   clear C; destruct IMM' as [C IMM'].
-  cdes WF'; cdes WF_MO. 
+  cdes WF'; cdes WF_MO.
   exploit (MO_LOC a y); eauto; intro; desc.
   exploit (MO_LOC x y); eauto; intro; desf.
   eapply WF_MO in NEQ; splits; eauto 3 with acts.
   exfalso; des; eauto.
-Qed. 
+Qed.
 
 Lemma ax_op_sim_step_write :
   forall op_st ths G G' a l v o (LABa : lab a = Astore l v o)
-   (GSTEP : gstep (acts G) (sb G) (rmw G) (rf G) (mo G) (sc G) 
+   (GSTEP : gstep (acts G) (sb G) (rmw G) (rf G) (mo G) (sc G)
       (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G') a a)
-   (COH' : Coherent (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G')) 
+   (COH' : Coherent (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G'))
    lang st st' (STATE : Language.step lang (ProgramEvent.write l v o) st st'),
   proof_obligation {|ts:=ths; exec:=G|} G' op_st (thread a) lang st st'.
 Proof.
   red; ins; red in TIME; ins; desc.
   subst G0; destruct G, G'; simpl; ins.
 
-  edestruct new_f with (dom := fun l x => In x acts0 /\ is_write x /\ loc x = Some l) 
+  edestruct new_f with (dom := fun l x => In x acts0 /\ is_write x /\ loc x = Some l)
                        (a:=a) (acts:=acts) (mo := mo0) (f_to := fto) (f_from:=ffrom)
     as (f_from' & L); desc;
     try eassumption;
-    try (by cdes GSTEP; ins; apply WF'). 
+    try (by cdes GSTEP; ins; apply WF').
     ins; cdes GSTEP; cdes WF'; cdes WF_MO.
     exploit MO_ACTa; eauto; exploit MO_DOMa; eauto.
     exploit MO_ACTb; eauto; exploit MO_DOMb; eauto.
@@ -383,14 +383,14 @@ Proof.
     by cdes GSTEP; subst; intros; desf.
     by cdes GSTEP; red; ins; eapply MONOTONE, gstep_mo; eauto; congruence.
     {
-      ins; eapply SPACE. 
+      ins; eapply SPACE.
         cdes GSTEP; eapply gstep_mo; eauto;
         by try intro; subst; cdes WF'; eapply WF_MO; eauto.
-      unfold seq; intro; desc.  
+      unfold seq; intro; desc.
       eapply rf_mon in H; eauto.
       eapply rmw_mon in H0; eauto.
-      by cdes COH'; rewrite Atomicityalt in *; 
-        eapply Cat with (a:= x) (b:= a) (c := y); eauto. 
+      by cdes COH'; rewrite Atomicityalt in *;
+        eapply Cat with (a:= x) (b:= a) (c := y); eauto.
     }
     eby eapply ffrom_helper.
     by ins; desc; eapply sim_mem_lt; eauto.
@@ -411,7 +411,7 @@ Proof.
     by destruct WF_OP_ST.
     red in TVIEW; desc.
     red in CUR; desc.
-    specialize (CUR_RW l). 
+    specialize (CUR_RW l).
     red in CUR_RW; unfold LocFun.find in CUR_RW; desf.
     by rewrite MAX0; eauto using Time.bot_spec.
     etransitivity; try eapply LB'.
@@ -424,8 +424,8 @@ Proof.
             by splits; eauto using in_eq, in_cons, acts_cur_rwr with rel.
           by splits; eauto 3 using in_eq, in_cons, acts_cur_rwr with rel;
              destruct a as [??[]]; ins; desf.
-        unfold t_cur, c_cur, dom_rel, seq, eqv_rel in INam; desc; subst. 
-        exfalso; eapply (Coherent_rwr_sb COH'); eauto. 
+        unfold t_cur, c_cur, dom_rel, seq, eqv_rel in INam; desc; subst.
+        exfalso; eapply (Coherent_rwr_sb COH'); eauto.
           by eapply rwr_mon; eauto.
         eapply gstep_sb; eauto.
         unfold sb_ext, Relation_Operators.union, seq, eqv_rel; eauto.
@@ -445,7 +445,7 @@ Proof.
   assert (WRITABLE: TView.writable
     (TView.cur (Local.tview {| Local.tview := tview; Local.promises := Memory.bot |}))
     (Configuration.sc op_st) l (f_to' a) o).
-    by cdes GSTEP; desf; red in TVIEW; desc; eapply Writable_full; 
+    by cdes GSTEP; desf; red in TVIEW; desc; eapply Writable_full;
       eauto using TimeFacts.le_lt_lt, Time.bot_spec, in_eq.
 
   desc; eexists _,_,_,mem',_,_,_; splits; eauto.
@@ -458,7 +458,7 @@ Proof.
       eapply max_value_same_set; try edone.
       ins; rewrite gstep_S_tm_other; eauto.
       intro; destruct a as [??[]]; ins.
-      intro x;  rewrite gstep_S_tm_other; try edone. 
+      intro x;  rewrite gstep_S_tm_other; try edone.
       by ins; eapply F_TO; apply acts_S_tm in H0.
       destruct a as [??[]]; ins.
     * eapply memory_step_write; eauto.
@@ -471,14 +471,14 @@ Proof.
       exploit mo_acta; try exact MO; try eassumption.
       exploit mo_actb; try exact MO; try eassumption.
       ins; desf; subst.
-        eby intro X; rewrite X in *; eapply Time.lt_strorder. 
+        eby intro X; rewrite X in *; eapply Time.lt_strorder.
         by eapply NADJ_R; eauto.
         by eapply NADJ_L; eauto.
-      rewrite F_FROM, F_TO; ins. 
+      rewrite F_FROM, F_TO; ins.
       eapply SPACE; eauto.
       eapply gstep_mo; eauto; try congruence.
       by intro X; apply NRMW, (gstep_rf_rmw COH GSTEP); vauto.
-    * clear H; cdes GSTEP; subst; ins; desf. 
+    * clear H; cdes GSTEP; subst; ins; desf.
       rewrite F_FROM; ins.
       apply BSPACE; eauto; intro; desc; apply NRMW; eexists.
       eapply seq_mori; eauto using rf_mon, rmw_mon.
@@ -489,9 +489,9 @@ Lemma ax_op_sim_step_update :
          a_r l v_r o_r (LABar : lab a_r = Aload l v_r o_r)
          a_w v_w o_w (LABaw : lab a_w = Astore l v_w o_w)
          G_mid
-  (GSTEPr : gstep (acts G) (sb G) (rmw G) (rf G) (mo G) (sc G) 
+  (GSTEPr : gstep (acts G) (sb G) (rmw G) (rf G) (mo G) (sc G)
               (acts G_mid) (sb G_mid) (rmw G_mid) (rf G_mid)  (mo G_mid) (sc G_mid) a_r a_r)
-  (GSTEPw : gstep (acts G_mid) (sb G_mid) (rmw G_mid) (rf G_mid) (mo G_mid) (sc G_mid) 
+  (GSTEPw : gstep (acts G_mid) (sb G_mid) (rmw G_mid) (rf G_mid) (mo G_mid) (sc G_mid)
             (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G') a_r a_w)
   (COHmid : Coherent (acts G_mid) (sb G_mid) (rmw G_mid) (rf G_mid) (mo G_mid) (sc G_mid))
   (COH' : Coherent (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G'))
@@ -502,14 +502,14 @@ Proof.
   red; ins; red in TIME; ins; desc.
   subst G0; destruct G, G', G_mid; simpl; ins.
   generalize (gstep_read_rf COH GSTEPr LABar); intro; desc.
-  assert (E: exists rel, Memory.get l (fto b) (Configuration.memory op_st) = 
-          Some (ffrom b, Message.mk v_r rel) /\ 
+  assert (E: exists rel, Memory.get l (fto b) (Configuration.memory op_st) =
+          Some (ffrom b, Message.mk v_r rel) /\
           sim_mem_helper fto acts sb rmw rf sc b (ffrom b) v_r rel.(View.unwrap)).
     by cdes COH; cdes WF; eapply sim_mem_get; eauto with acts; destruct b as [??[]]; ins; desf.
   desc; red in E0; desc; clear FROM.
-  assert (WRITE_B: is_write b). 
+  assert (WRITE_B: is_write b).
     unfold is_write; destruct (lab b); ins.
-  assert (LOC_B: Gevents.loc b = Some l). 
+  assert (LOC_B: Gevents.loc b = Some l).
     unfold Gevents.loc; destruct (lab b); ins; desf.
   assert (INb1: In b acts1).
     by cdes GSTEPr; vauto.
@@ -548,7 +548,7 @@ Proof.
   assert (SPACEw : forall x y : event, mo1 x y -> ~ (rf1;; rmw1) x y -> fto x <> ffrom y).
     ins; eapply SPACE.
     eapply gstep_mo; eauto; intro; subst;
-      [eapply mo_doma in H|eapply mo_domb in H]; 
+      [eapply mo_doma in H|eapply mo_domb in H];
       eauto; destruct a_r as [??[]]; ins.
     intro X; apply (gstep_rf_rmw_nonwrite COH GSTEPr) in X; eauto;
     by destruct a_r as [??[]].
@@ -560,15 +560,15 @@ Proof.
     by destruct y as [??[]].
     apply BSPACE; eauto; intro; desc; apply H2; eexists.
     by eapply seq_mori; eauto using rf_mon, rmw_mon.
-  assert (TVIEWw: sim_tview fto acts1 sb1 rmw1 rf1 sc1 
+  assert (TVIEWw: sim_tview fto acts1 sb1 rmw1 rf1 sc1
     (TView.read_tview tview l (fto b) rel o_r) (thread a_r)).
     by eapply tview_step_read with (acts := acts) (acts0 := acts1); eauto.
 
-  edestruct new_f with (dom := fun l x => In x acts0 /\ is_write x /\ loc x = Some l) 
+  edestruct new_f with (dom := fun l x => In x acts0 /\ is_write x /\ loc x = Some l)
                        (a:=a_w) (acts:=acts1) (mo := mo0) (f_to := fto) (f_from:=ffrom)
     as (f_from' & L); desc;
     try eassumption;
-    try (by cdes GSTEPw; ins; apply WF'). 
+    try (by cdes GSTEPw; ins; apply WF').
     ins; cdes GSTEPw; cdes WF'; cdes WF_MO.
     exploit MO_ACTa; eauto; exploit MO_DOMa; eauto.
     exploit MO_ACTb; eauto; exploit MO_DOMb; eauto.
@@ -577,14 +577,14 @@ Proof.
     by cdes GSTEPw; subst; intros; desf.
     by cdes GSTEPw; red; ins; eapply MONOTONEw, gstep_mo; eauto; congruence.
     {
-      ins; eapply SPACEw. 
+      ins; eapply SPACEw.
       cdes GSTEPw; eapply gstep_mo; eauto;
         by try intro; subst; cdes WF'; eapply WF_MO; eauto.
-      unfold seq; intro; desc.  
+      unfold seq; intro; desc.
       eapply rf_mon in H; eauto.
       eapply rmw_mon in H0; eauto.
       by cdes COH'; rewrite Atomicityalt in *;
-        eapply Cat with (a:= x) (b:= a_w) (c := y); eauto. 
+        eapply Cat with (a:= x) (b:= a_w) (c := y); eauto.
     }
     eby eapply ffrom_helper.
     by ins; desc; eapply sim_mem_lt; eauto.
@@ -595,7 +595,7 @@ Proof.
 
   assert (exists mem', Memory.write Memory.bot
                     (Configuration.memory op_st) l (fto b) (f_to' a_w) v_w
-                    (TView.write_released 
+                    (TView.write_released
   (TView.read_tview tview l (fto b) rel o_r)
    op_st.(Configuration.sc) l (f_to' a_w) rel o_w)
                     Memory.bot mem' Memory.op_kind_add).
@@ -605,9 +605,9 @@ Proof.
   - eapply TViewFacts.read_future1; eauto; eby eapply WF_OP_ST.
   - red in TVIEWw; desc.
     red in CUR; desc.
-    specialize (CUR_RW l). 
+    specialize (CUR_RW l).
     unfold TView.read_tview in *; ins.
-    red in CUR_RW; unfold LocFun.find in CUR_RW. 
+    red in CUR_RW; unfold LocFun.find in CUR_RW.
     desc. destruct MAX as [MAX|MAX0]; desc.
     by rewrite MAX0; eauto using Time.bot_spec.
     etransitivity; try eapply LB'.
@@ -618,14 +618,14 @@ Proof.
       assert (mo0 a_max a_w \/ mo0 a_w a_max); des; eauto.
       eapply GSTEPw with (l:=l); cdes GSTEPw; ins; subst.
       by splits; eauto using in_eq, in_cons, acts_cur_rwr with rel.
-      unfold t_cur, c_cur, dom_rel, seq, eqv_rel in INam; desc; subst. 
-      exfalso; eapply (Coherent_rwr_sb COH'); eauto. 
+      unfold t_cur, c_cur, dom_rel, seq, eqv_rel in INam; desc; subst.
+      exfalso; eapply (Coherent_rwr_sb COH'); eauto.
       by eapply rwr_mon; eauto.
       eapply gstep_sb with (acts:=acts1); eauto.
       unfold sb_ext, Relation_Operators.union, seq, eqv_rel; eauto.
       rewrite <- SAME_THREAD in INam1.
       eauto_red 10 using rwr_actb.
-    } 
+    }
   - intro; ins; destruct LHS, RHS; ins.
     desf; specialize (SIM_MEMw l); desc.
     destruct msg2; eapply SIMCELL in H; desf.
@@ -681,7 +681,7 @@ Proof.
   assert (WRITABLE: TView.writable (TView.cur (TView.read_tview tview l (fto b) rel o_r))
     (Configuration.sc op_st) l (f_to' a_w) o_w).
     {
-    cdes GSTEPw; desf; red in TVIEW; desc; eapply Writable_full; 
+    cdes GSTEPw; desf; red in TVIEW; desc; eapply Writable_full;
           eauto using TimeFacts.le_lt_lt, Time.bot_spec, in_eq.
     by rewrite SAME_THREAD; eapply TVIEWw.
     }
@@ -690,7 +690,7 @@ Proof.
     - econs; [|eapply Local.step_update]; eauto.
       * econstructor; eauto.
         red in TVIEW; red in SIMMSG; desc.
-        eapply Readable_full with (acts':=acts1) ;eauto. 
+        eapply Readable_full with (acts':=acts1) ;eauto.
       * econstructor; eauto.
         by esplits; ss; apply Memory.bot_nonsynch_loc.
     - exists (upd ffrom a_w (fto b)), f_to'; splits; try done.
@@ -772,9 +772,9 @@ Qed.
 Lemma ax_op_sim_step_fence :
   forall op_st ths G G'
          a o_r o_w (LABa : lab a = Afence o_r o_w)
-   (GSTEP : gstep (acts G) (sb G) (rmw G) (rf G) (mo G) (sc G) 
+   (GSTEP : gstep (acts G) (sb G) (rmw G) (rf G) (mo G) (sc G)
             (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G') a a)
-   (COH' : Coherent (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G')) 
+   (COH' : Coherent (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G'))
    lang st st'
    (STATE : Language.step lang (ProgramEvent.fence o_r o_w) st st'),
   proof_obligation {|ts:=ths; exec:=G|} G' op_st (thread a) lang st st'.
@@ -787,13 +787,13 @@ Proof.
   { i. apply Memory.bot_nonsynch. }
   exists ffrom, fto; splits; eauto.
   * rewrite <- gstep_non_write_mo; eauto with acts.
-  * destruct (classic (is_sc a)); 
+  * destruct (classic (is_sc a));
       [ eapply tview_step_scfence|eapply tview_step_rafence]; eauto.
   * eby eapply sc_map_step_fence.
   * by eapply memory_step_nonwrite; eauto with acts.
   * ins; eapply SPACE.
-      by eapply gstep_mo; eauto; intro; subst; 
-         [eapply mo_doma in MO|eapply mo_domb in MO]; 
+      by eapply gstep_mo; eauto; intro; subst;
+         [eapply mo_doma in MO|eapply mo_domb in MO];
          eauto; destruct a as [??[]].
     intro X; apply (gstep_rf_rmw_nonwrite COH GSTEP) in X; eauto;
     by destruct a as [??[]].
@@ -805,9 +805,9 @@ Qed.
 Lemma ax_op_sim_step_syscall :
   forall op_st ths G G'
          a (LABa : lab a = Afence Ordering.seqcst Ordering.seqcst)
-   (GSTEP : gstep (acts G) (sb G) (rmw G) (rf G) (mo G) (sc G) 
+   (GSTEP : gstep (acts G) (sb G) (rmw G) (rf G) (mo G) (sc G)
             (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G') a a)
-   (COH' : Coherent (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G')) 
+   (COH' : Coherent (acts G') (sb G') (rmw G') (rf G') (mo G') (sc G'))
    lang st st' ee
    (STATE : Language.step lang (ProgramEvent.syscall ee) st st'),
   proof_obligation {|ts:=ths; exec:=G|} G' op_st (thread a) lang st st'.
@@ -824,8 +824,8 @@ Proof.
   * eby eapply sc_map_step_fence.
   * by eapply memory_step_nonwrite; eauto with acts.
   * ins; eapply SPACE.
-      by eapply gstep_mo; eauto; intro; subst; 
-         [eapply mo_doma in MO|eapply mo_domb in MO]; 
+      by eapply gstep_mo; eauto; intro; subst;
+         [eapply mo_doma in MO|eapply mo_domb in MO];
          eauto; destruct a as [??[]].
     intro X; apply (gstep_rf_rmw_nonwrite COH GSTEP) in X; eauto;
     by destruct a as [??[]].
@@ -868,11 +868,11 @@ Proof.
       clear CSTEP.
       rewrite IdentMap.gsspec in TID0; desf; ins; simpl.
       destruct MSTEP; subst.
-      by desf; rewrite SAME_EXEC; eapply sim_tview_other_threads_silent; eauto. 
-      all: eapply sim_tview_other_threads; eauto 2. 
+      by desf; rewrite SAME_EXEC; eapply sim_tview_other_threads_silent; eauto.
+      all: eapply sim_tview_other_threads; eauto 2.
       all: try eapply sim_tview_other_threads; eauto 2.
-      all: try intro; subst; eauto. 
-      all: congruence. 
+      all: try intro; subst; eauto.
+      all: congruence.
    }
   clear f_from f_to TIME SPACE BSPACE.
 
@@ -892,5 +892,3 @@ Proof.
   by eapply ax_op_sim_step_fence; eauto.
   by eapply ax_op_sim_step_syscall; eauto.
 Qed.
-
-

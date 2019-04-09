@@ -32,7 +32,7 @@ Module ThreadEvent.
   .
 
   Inductive t :=
-  | promise (loc:Loc.t) (from to:Time.t) (val:Const.t) (released:option View.t) (kind:Memory.op_kind)
+  | promise (loc:Loc.t) (from to:Time.t) (msg:Message.t) (kind:Memory.op_kind)
   | program (event:program_t)
   .
   Coercion ThreadEvent.program: ThreadEvent.program_t >-> ThreadEvent.t.
@@ -55,19 +55,19 @@ Module ThreadEvent.
 
   Definition get_program (e:t): option program_t :=
     match e with
-    | promise _ _ _ _ _ _ => None
+    | promise _ _ _ _ _ => None
     | program e => Some e
     end.
 
   Definition is_promising (e:t) : option (Loc.t * Time.t) :=
     match e with
-    | promise loc from to v rel kind => Some (loc, to)
+    | promise loc from to msg kind => Some (loc, to)
     | _ => None
     end.
 
   Definition is_lower_none (e:t) : bool :=
     match e with
-    | promise loc from to v rel kind => Memory.op_kind_is_lower kind && negb rel
+    | promise loc from to msg kind => Memory.op_kind_is_lower kind && negb msg.(Message.view)
     | _ => false
     end.
 
@@ -95,9 +95,9 @@ Module ThreadEvent.
 
   Inductive le: forall (lhs rhs:t), Prop :=
   | le_promise
-      loc from to val rel1 rel2 kind1 kind2
-      (LEREL: View.opt_le rel1 rel2):
-      le (promise loc from to val rel1 kind1) (promise loc from to val rel2 kind2)
+      loc from to msg1 msg2 kind1 kind2
+      (LEREL: Message.le msg1 msg2):
+      le (promise loc from to msg1 kind1) (promise loc from to msg2 kind2)
   | le_silent:
       le (program silent) (program silent)
   | le_read
@@ -206,12 +206,12 @@ Module Local.
     econs. symmetry. apply H.
   Qed.
 
-  Inductive promise_step (lc1:t) (mem1:Memory.t) (loc:Loc.t) (from to:Time.t) (val:Const.t) (released:option View.t): forall (lc2:t) (mem2:Memory.t) (kind:Memory.op_kind), Prop :=
+  Inductive promise_step (lc1:t) (mem1:Memory.t) (loc:Loc.t) (from to:Time.t) (msg:Message.t): forall (lc2:t) (mem2:Memory.t) (kind:Memory.op_kind), Prop :=
   | promise_step_intro
       promises2 mem2 kind
-      (PROMISE: Memory.promise lc1.(promises) mem1 loc from to val released promises2 mem2 kind)
-      (CLOSED: Memory.closed_opt_view released mem2):
-      promise_step lc1 mem1 loc from to val released (mk lc1.(tview) promises2) mem2 kind
+      (PROMISE: Memory.promise lc1.(promises) mem1 loc from to msg promises2 mem2 kind)
+      (CLOSED: Memory.closed_opt_view msg.(Message.view) mem2):
+      promise_step lc1 mem1 loc from to msg (mk lc1.(tview) promises2) mem2 kind
   .
 
   Inductive read_step (lc1:t) (mem1:Memory.t) (loc:Loc.t) (to:Time.t) (val:Const.t) (released:option View.t) (ord:Ordering.t): forall (lc2:t), Prop :=
@@ -280,8 +280,8 @@ Module Local.
       program_step (ThreadEvent.syscall e) lc1 sc1 mem1 lc2 sc2 mem1
   .
 
-  Lemma promise_step_future lc1 sc1 mem1 loc from to val released lc2 mem2 kind
-        (STEP: promise_step lc1 mem1 loc from to val released lc2 mem2 kind)
+  Lemma promise_step_future lc1 sc1 mem1 loc from to msg lc2 mem2 kind
+        (STEP: promise_step lc1 mem1 loc from to msg lc2 mem2 kind)
         (WF1: wf lc1 mem1)
         (SC1: Memory.closed_timemap sc1 mem1)
         (CLOSED1: Memory.closed mem1):
@@ -290,9 +290,9 @@ Module Local.
     <<CLOSED2: Memory.closed mem2>> /\
     <<FUTURE: Memory.future mem1 mem2>> /\
     <<TVIEW_FUTURE: TView.le lc1.(tview) lc2.(tview)>> /\
-    <<REL_WF: View.opt_wf released>> /\
-    <<REL_TS: Time.le (released.(View.unwrap).(View.rlx) loc) to>> /\
-    <<REL_CLOSED: Memory.closed_opt_view released mem2>>.
+    <<REL_WF: View.opt_wf msg.(Message.view)>> /\
+    <<REL_TS: Time.le (msg.(Message.view).(View.unwrap).(View.rlx) loc) to>> /\
+    <<REL_CLOSED: Memory.closed_opt_view msg.(Message.view) mem2>>.
   Proof.
     inv WF1. inv STEP.
     exploit Memory.promise_future; eauto. i. des.
@@ -318,7 +318,7 @@ Module Local.
   Proof.
     inv WF1. inv STEP.
     exploit TViewFacts.read_future; eauto.
-    { eapply CLOSED1. eauto. }
+    { inv CLOSED1. exploit CLOSED; eauto. i. des. eauto. }
     inv CLOSED1. exploit CLOSED; eauto. i. des.
     splits; auto.
     - econs; eauto.
@@ -344,6 +344,7 @@ Module Local.
   Proof.
     inv WF1. inv STEP.
     exploit TViewFacts.write_future; eauto.
+    { instantiate (4:=Message.mk _ _). ss. }
     { inv WRITE. eapply Memory.promise_op. eauto. }
     s. i. des.
     exploit Memory.write_future; try apply WRITE; eauto. i. des.
@@ -403,8 +404,8 @@ Module Local.
   Qed.
 
   Lemma promise_step_disjoint
-        lc1 sc1 mem1 loc from to val released lc2 mem2 lc kind
-        (STEP: promise_step lc1 mem1 loc from to val released lc2 mem2 kind)
+        lc1 sc1 mem1 loc from to msg lc2 mem2 lc kind
+        (STEP: promise_step lc1 mem1 loc from to msg lc2 mem2 kind)
         (WF1: wf lc1 mem1)
         (SC1: Memory.closed_timemap sc1 mem1)
         (CLOSED1: Memory.closed mem1)
@@ -508,11 +509,11 @@ Module Thread.
     Inductive promise_step (pf:bool): forall (e:ThreadEvent.t) (e1 e2:t), Prop :=
     | promise_step_intro
         st lc1 sc1 mem1
-        loc from to val released kind
+        loc from to msg kind
         lc2 mem2
-        (LOCAL: Local.promise_step lc1 mem1 loc from to val released lc2 mem2 kind)
-        (PF: pf = andb (Memory.op_kind_is_lower kind) (negb released)):
-        promise_step pf (ThreadEvent.promise loc from to val released kind) (mk st lc1 sc1 mem1) (mk st lc2 sc1 mem2)
+        (LOCAL: Local.promise_step lc1 mem1 loc from to msg lc2 mem2 kind)
+        (PF: pf = andb (Memory.op_kind_is_lower kind) (negb msg.(Message.view))):
+        promise_step pf (ThreadEvent.promise loc from to msg kind) (mk st lc1 sc1 mem1) (mk st lc2 sc1 mem2)
     .
 
     (* NOTE: Syscalls act like an SC fence.
@@ -576,6 +577,7 @@ Module Thread.
         (FUTURE: Memory.future e.(memory) mem1)
         (FUTURE: TimeMap.le e.(sc) sc1)
         (WF: Local.wf e.(local) mem1)
+        (NOHALF: Memory.no_half e.(local).(Local.promises) mem1)
         (SC: Memory.closed_timemap sc1 mem1)
         (MEM: Memory.closed mem1),
       exists e2,

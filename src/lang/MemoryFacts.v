@@ -19,8 +19,8 @@ Set Implicit Arguments.
 
 Module MemoryFacts.
   Lemma promise_time_lt
-        promises1 mem1 loc from to val released promises2 mem2 kind
-        (PROMISE: Memory.promise promises1 mem1 loc from to val released promises2 mem2 kind):
+        promises1 mem1 loc from to msg promises2 mem2 kind
+        (PROMISE: Memory.promise promises1 mem1 loc from to msg promises2 mem2 kind):
     Time.lt from to.
   Proof.
     inv PROMISE.
@@ -38,12 +38,12 @@ Module MemoryFacts.
   Qed.
 
   Lemma promise_get1_diff
-        promises1 mem1 loc from to val released promises2 mem2 kind
-        l t f v r
-        (PROMISE: Memory.promise promises1 mem1 loc from to val released promises2 mem2 kind)
-        (GET: Memory.get l t mem1 = Some (f, Message.mk v r))
+        promises1 mem1 loc from to msg promises2 mem2 kind
+        l t f m
+        (PROMISE: Memory.promise promises1 mem1 loc from to msg promises2 mem2 kind)
+        (GET: Memory.get l t mem1 = Some (f, m))
         (DIFF: (loc, to) <> (l, t)):
-    exists f', Memory.get l t mem2 = Some (f', Message.mk v r).
+    exists f', Memory.get l t mem2 = Some (f', m).
   Proof.
     inv PROMISE.
     - erewrite Memory.add_o; eauto. condtac; ss.
@@ -61,12 +61,12 @@ Module MemoryFacts.
   Qed.
 
   Lemma promise_get_inv_diff
-        promises1 mem1 loc from to val released promises2 mem2 kind
-        l t f v r
-        (PROMISE: Memory.promise promises1 mem1 loc from to val released promises2 mem2 kind)
-        (GET: Memory.get l t mem2 = Some (f, Message.mk v r))
+        promises1 mem1 loc from to msg promises2 mem2 kind
+        l t f m
+        (PROMISE: Memory.promise promises1 mem1 loc from to msg promises2 mem2 kind)
+        (GET: Memory.get l t mem2 = Some (f, m))
         (DIFF: (loc, to) <> (l, t)):
-    exists f', Memory.get l t mem1 = Some (f', Message.mk v r).
+    exists f', Memory.get l t mem1 = Some (f', m).
   Proof.
     revert GET. inv PROMISE.
     - erewrite Memory.add_o; eauto. condtac; ss.
@@ -80,15 +80,15 @@ Module MemoryFacts.
     - erewrite Memory.lower_o; eauto. condtac; ss.
       + des. subst. congr.
       + i. inv GET. esplits; eauto.
-  Qed.        
+  Qed.
 
   Lemma promise_get_promises_inv_diff
-        promises1 mem1 loc from to val released promises2 mem2 kind
-        l t f v r
-        (PROMISE: Memory.promise promises1 mem1 loc from to val released promises2 mem2 kind)
-        (GET: Memory.get l t promises2 = Some (f, Message.mk v r))
+        promises1 mem1 loc from to msg promises2 mem2 kind
+        l t f m
+        (PROMISE: Memory.promise promises1 mem1 loc from to msg promises2 mem2 kind)
+        (GET: Memory.get l t promises2 = Some (f, m))
         (DIFF: (loc, to) <> (l, t)):
-    exists f', Memory.get l t promises1 = Some (f', Message.mk v r).
+    exists f', Memory.get l t promises1 = Some (f', m).
   Proof.
     revert GET. inv PROMISE.
     - erewrite Memory.add_o; eauto. condtac; ss.
@@ -105,11 +105,11 @@ Module MemoryFacts.
   Qed.
 
   Lemma remove_get_diff
-        promises0 mem0 loc from to val released promises1
+        promises0 mem0 loc from to msg promises1
         l t
         (LOC: loc <> l)
         (LE: Memory.le promises0 mem0)
-        (REMOVE: Memory.remove promises0 loc from to val released promises1):
+        (REMOVE: Memory.remove promises0 loc from to msg promises1):
     Memory.get l t promises1 = Memory.get l t promises0.
   Proof.
     erewrite Memory.remove_o; eauto. condtac; ss.
@@ -117,10 +117,10 @@ Module MemoryFacts.
   Qed.
 
   Lemma remove_cell_diff
-        promises0 loc from to val released promises1
+        promises0 loc from to msg promises1
         l
         (LOC: loc <> l)
-        (REMOVE: Memory.remove promises0 loc from to val released promises1):
+        (REMOVE: Memory.remove promises0 loc from to msg promises1):
     promises1 l = promises0 l.
   Proof.
     apply Cell.ext. i. eapply remove_get_diff; eauto. refl.
@@ -183,18 +183,31 @@ Module MemoryFacts.
     - guardH o. erewrite (@Memory.add_o promises0); eauto. condtac; ss.
   Qed.
 
+  Definition nonalize (msg:Message.t): Message.t :=
+    match msg with
+    | Message.mk val _ => Message.mk val None
+    | _ => Message.half
+    end.
+
+  (* TODO: which one is right? *)
   Lemma promise_exists_None
-        promises1 mem1 loc from to val released
+        promises1 mem1 loc from to msg
         (LE: Memory.le promises1 mem1)
-        (GET: Memory.get loc to promises1 = Some (from, Message.mk val released))
-        (LT: Time.lt from to):
+        (GET: Memory.get loc to promises1 = Some (from, msg))
+        (LT: Time.lt from to)
+    :
     exists promises2 mem2,
-      Memory.promise promises1 mem1 loc from to val None promises2 mem2 (Memory.op_kind_lower released).
+      Memory.promise promises1 mem1 loc from to (nonalize msg) promises2 mem2 (Memory.op_kind_lower msg).
   Proof.
-    exploit Memory.lower_exists; eauto; try by econs. i. des.
-    exploit LE; eauto. i.
-    exploit Memory.lower_exists; eauto; try by econs. i. des.
-    esplits. econs; eauto. apply Time.bot_spec.
+    exploit Memory.lower_exists; eauto.
+    { instantiate (1:=nonalize msg). destruct msg; econs. }
+    { destruct msg; econs. econs. }
+    i. des. exploit LE; eauto. i.
+    exploit Memory.lower_exists; eauto.
+    { instantiate (1:=nonalize msg). destruct msg; econs. }
+    { destruct msg; econs. econs. }
+    i. des. esplits. econs; eauto.
+    destruct msg; apply Time.bot_spec.
   Qed.
 
   Lemma some_released_time_lt
